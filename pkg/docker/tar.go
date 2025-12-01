@@ -38,53 +38,82 @@ func (t *TarHandler) Cleanup() error {
 // which can then be used to generate a tar ball for providing a context
 // to build image with bundle packaged into support-bundle-kit base image
 func (t *TarHandler) UnzipSupportBundle(bundleZipFile string) (err error) {
-
-	// ensure destination exists
-	destination := t.TmpDirName
+	// Create a temporary directory for extraction
+	extractDir, err := os.MkdirTemp("", "sim-cli-extract")
+	if err != nil {
+		return err
+	}
+	defer os.RemoveAll(extractDir)
 
 	r, err := zip.OpenReader(bundleZipFile)
 	if err != nil {
 		return err
 	}
+	defer r.Close()
 
 	for _, f := range r.File {
-		destPath := filepath.Join(destination, f.Name)
-		if !strings.HasPrefix(destPath, filepath.Clean(destination)+string(os.PathSeparator)) {
-			return fmt.Errorf("invalid dest path %s", destPath)
+		fpath := filepath.Join(extractDir, f.Name)
+
+		// Check for ZipSlip
+		if !strings.HasPrefix(fpath, filepath.Clean(extractDir)+string(os.PathSeparator)) {
+			return fmt.Errorf("illegal file path: %s", fpath)
 		}
 
 		if f.FileInfo().IsDir() {
-			if err := os.MkdirAll(destPath, os.ModePerm); err != nil {
-				return err
-			}
-		} else {
-			if err := os.MkdirAll(filepath.Dir(destPath), os.ModePerm); err != nil {
-				return err
-			}
-
-			destFile, err := os.OpenFile(destPath, os.O_WRONLY|os.O_CREATE|os.O_CREATE, f.Mode())
-			if err != nil {
-				return err
-			}
-
-			zFile, err := f.Open()
-			if err != nil {
-				return err
-			}
-
-			if _, err = io.Copy(destFile, zFile); err != nil {
-				return err
-			}
-			zFile.Close()
-			destFile.Close()
+			os.MkdirAll(fpath, os.ModePerm)
+			continue
 		}
 
+		if err := os.MkdirAll(filepath.Dir(fpath), os.ModePerm); err != nil {
+			return err
+		}
+
+		outFile, err := os.OpenFile(fpath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, f.Mode())
+		if err != nil {
+			return err
+		}
+
+		rc, err := f.Open()
+		if err != nil {
+			outFile.Close()
+			return err
+		}
+
+		_, err = io.Copy(outFile, rc)
+
+		outFile.Close()
+		rc.Close()
+
+		if err != nil {
+			return err
+		}
 	}
 
-	// rename support bundle to ensure consistent tar file packaging
-	baseFilePath := filepath.Base(bundleZipFile)
-	baseDirName := strings.Split(baseFilePath, ".zip")
-	return os.Rename(filepath.Join(destination, baseDirName[0]), filepath.Join(destination, defaultBundleDir))
+	// Analyze structure to determine the root of the bundle
+	entries, err := os.ReadDir(extractDir)
+	if err != nil {
+		return err
+	}
+
+	var validEntries []os.DirEntry
+	for _, e := range entries {
+		if e.Name() == "__MACOSX" || e.Name() == ".DS_Store" {
+			continue
+		}
+		validEntries = append(validEntries, e)
+	}
+
+	targetBundlePath := filepath.Join(t.TmpDirName, defaultBundleDir)
+
+	// If there is exactly one directory, assume it is the root folder of the bundle
+	if len(validEntries) == 1 && validEntries[0].IsDir() {
+		src := filepath.Join(extractDir, validEntries[0].Name())
+		return os.Rename(src, targetBundlePath)
+	}
+
+	// Otherwise, assume the zip contents are the bundle contents (flat structure or multiple roots)
+	// We rename the extraction directory itself to the target bundle path
+	return os.Rename(extractDir, targetBundlePath)
 }
 
 // GenerateBundleTar attempts to parse FS/bundle to build a tar which can be passed

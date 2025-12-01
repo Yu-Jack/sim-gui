@@ -90,6 +90,7 @@ func readResponse(resp io.ReadCloser) error {
 
 		if msg.Error != nil {
 			logrus.Error(msg.Error)
+			return msg.Error
 		}
 
 		if msg.Aux != nil {

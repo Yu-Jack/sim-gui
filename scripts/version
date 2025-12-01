@@ -1,4 +1,4 @@
 #!/bin/bash
 
 # update image here to ensure new image is used by sim-cli when launching new instances
-export SUPPORT_BUNDLE_KIT_IMAGE="gmehta3/support-bundle-kit:dev"
+export SUPPORT_BUNDLE_KIT_IMAGE="rancher/support-bundle-kit:master-head"

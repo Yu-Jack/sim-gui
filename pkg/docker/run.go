@@ -2,10 +2,12 @@ package docker
 
 import (
 	"archive/tar"
+	"bufio"
 	"bytes"
 	"fmt"
 	"io"
 	"net/url"
+	"strings"
 
 	"github.com/bndr/gotabulate"
 	"github.com/docker/docker/api/types"
@@ -29,7 +31,7 @@ func (c *Client) RunContainer(instanceName, bundlePath string) error {
 			simCliPrefix:  instanceName,
 		},
 	}, &container.HostConfig{
-		AutoRemove:  true,
+		AutoRemove:  false,
 		NetworkMode: "bridge",
 		PortBindings: map[nat.Port][]nat.PortBinding{
 			"6443/tcp": {
@@ -60,6 +62,15 @@ func (c *Client) FindRunningContainer(instanceName string) ([]types.Container, e
 
 }
 
+// FindContainer attempts to find instance of simulator associated with the instanceName (running or stopped)
+func (c *Client) FindContainer(instanceName string) ([]types.Container, error) {
+	filters := filters.NewArgs(filters.KeyValuePair{Key: "name", Value: instanceName})
+	return c.APIClient.ContainerList(c.ctx, container.ListOptions{
+		Filters: filters,
+		All:     true,
+	})
+}
+
 // StopContainer attempts to find and stop a running instance of a container associated with given instanceName
 func (c *Client) StopContainer(instanceName string) error {
 	containers, err := c.FindRunningContainer(instanceName)
@@ -73,6 +84,11 @@ func (c *Client) StopContainer(instanceName string) error {
 		}
 	}
 	return nil
+}
+
+// StartContainer starts an existing container
+func (c *Client) StartContainer(containerID string) error {
+	return c.APIClient.ContainerStart(c.ctx, containerID, container.StartOptions{})
 }
 
 // QueryExposedMapping attempts to find details of host/port needed for configuring the kubeconfig needed
@@ -173,4 +189,59 @@ func (c *Client) ReadFile(name string, path string) ([]byte, error) {
 		return buf.Bytes(), nil
 	}
 	return nil, nil
+}
+
+// RemoveContainer attempts to find and remove a container associated with given instanceName
+func (c *Client) RemoveContainer(instanceName string) error {
+	// Also check for stopped containers
+	filters := filters.NewArgs(filters.KeyValuePair{Key: "name", Value: instanceName})
+	allContainers, err := c.APIClient.ContainerList(c.ctx, container.ListOptions{
+		Filters: filters,
+		All:     true,
+	})
+	if err != nil {
+		return fmt.Errorf("error listing all containers matching name %s: %w", instanceName, err)
+	}
+
+	// Merge lists or just use allContainers
+	for _, v := range allContainers {
+		// Stop if running
+		if v.State == "running" {
+			if err := c.APIClient.ContainerStop(c.ctx, v.ID, container.StopOptions{Signal: "SIGKILL"}); err != nil {
+				return fmt.Errorf("error stopping container %s: %w", v.ID, err)
+			}
+		}
+		// Remove
+		if err := c.APIClient.ContainerRemove(c.ctx, v.ID, container.RemoveOptions{Force: true}); err != nil {
+			return fmt.Errorf("error removing container %s: %w", v.ID, err)
+		}
+	}
+	return nil
+}
+
+// WaitForLogMessage tails the container logs and waits for a specific message.
+func (c *Client) WaitForLogMessage(instanceName, message string) error {
+	containers, err := c.FindRunningContainer(instanceName)
+	if err != nil {
+		return fmt.Errorf("error listing containers matching name %s: %w", instanceName, err)
+	}
+	if len(containers) == 0 {
+		return fmt.Errorf("container %s not found", instanceName)
+	}
+
+	options := container.LogsOptions{ShowStdout: true, ShowStderr: true, Follow: true}
+	out, err := c.APIClient.ContainerLogs(c.ctx, containers[0].ID, options)
+	if err != nil {
+		return fmt.Errorf("error getting container logs: %w", err)
+	}
+	defer out.Close()
+
+	scanner := bufio.NewScanner(out)
+	for scanner.Scan() {
+		text := scanner.Text()
+		if strings.Contains(text, message) {
+			return nil
+		}
+	}
+	return scanner.Err()
 }

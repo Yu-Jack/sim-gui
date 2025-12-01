@@ -24,7 +24,7 @@ func AddContext(fileName string, name, endpoint, port string, contents []byte) e
 		}
 	}
 
-	newConfig, err := configureKubeConfig(contents, name, endpoint, port)
+	newConfig, err := ConfigureKubeConfig(contents, name, endpoint, port)
 	if err != nil {
 		return fmt.Errorf("failed to configure kubeconfig for instance %s: %w", name, err)
 	}
@@ -33,9 +33,9 @@ func AddContext(fileName string, name, endpoint, port string, contents []byte) e
 	return clientcmd.WriteToFile(*mergedConfig, fileName)
 }
 
-// configKubeconfig will massage the data for new instance kubeconfig to make it easier to merge
+// ConfigureKubeConfig will massage the data for new instance kubeconfig to make it easier to merge
 // and utilize once the kubeconfig's are merged
-func configureKubeConfig(contents []byte, name, endpoint, port string) (*api.Config, error) {
+func ConfigureKubeConfig(contents []byte, name, endpoint, port string) (*api.Config, error) {
 	config, err := clientcmd.Load(contents)
 	if err != nil {
 		return nil, fmt.Errorf("failed to load kubeconfig: %w", err)
@@ -71,6 +71,17 @@ func mergeKubeConfig(existing, new *api.Config) *api.Config {
 	// input kubeconfig was empty, so return new config
 	if existing == nil {
 		return new
+	}
+
+	// initialize maps if they are nil
+	if existing.Clusters == nil {
+		existing.Clusters = make(map[string]*api.Cluster)
+	}
+	if existing.AuthInfos == nil {
+		existing.AuthInfos = make(map[string]*api.AuthInfo)
+	}
+	if existing.Contexts == nil {
+		existing.Contexts = make(map[string]*api.Context)
 	}
 
 	// append new config to existing config

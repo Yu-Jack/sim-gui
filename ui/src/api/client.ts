@@ -1,0 +1,57 @@
+import axios from 'axios';
+import type { Workspace, Version } from '../types';
+
+const client = axios.create({
+  baseURL: 'http://localhost:8080/api',
+});
+
+export const getWorkspaces = async () => {
+  const response = await client.get<Workspace[]>('/workspaces');
+  return response.data;
+};
+
+export const createWorkspace = async (name: string) => {
+  const response = await client.post<Workspace>('/workspaces', { name });
+  return response.data;
+};
+
+export const getWorkspace = async (name: string) => {
+  const response = await client.get<Workspace>(`/workspaces/${name}`);
+  return response.data;
+};
+
+export const uploadVersion = async (workspaceName: string, files: File | File[]) => {
+  const formData = new FormData();
+  const fileList = Array.isArray(files) ? files : [files];
+  
+  fileList.forEach(file => {
+    formData.append('file', file);
+  });
+
+  await client.post(`/workspaces/${workspaceName}/versions`, formData, {
+    headers: {
+      'Content-Type': 'multipart/form-data',
+    },
+  });
+};
+
+export const startSimulator = async (workspaceName: string, versionID: string) => {
+  await client.post(`/workspaces/${workspaceName}/versions/${versionID}/start`);
+};
+
+export const stopSimulator = async (workspaceName: string, versionID: string) => {
+  await client.post(`/workspaces/${workspaceName}/versions/${versionID}/stop`);
+};
+
+export const getSimulatorStatus = async (workspaceName: string, versionID: string) => {
+  const response = await client.get<{ running: boolean; ready: boolean }>(`/workspaces/${workspaceName}/versions/${versionID}/status`);
+  return response.data;
+};
+
+export const getKubeconfigUrl = (workspaceName: string, versionID: string) => {
+  return `/api/workspaces/${workspaceName}/versions/${versionID}/kubeconfig`;
+};
+
+export const deleteVersion = async (workspaceName: string, versionID: string) => {
+  await client.delete(`/workspaces/${workspaceName}/versions/${versionID}`);
+};

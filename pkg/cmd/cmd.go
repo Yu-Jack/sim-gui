@@ -17,7 +17,7 @@ var (
 		Ctx: context.TODO(),
 	}
 	verbose bool
-	Image   = "rancher/support-bundle-kit:dev"
+	Image   = "rancher/support-bundle-kit:master-head"
 )
 
 // define sub comamnds

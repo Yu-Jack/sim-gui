@@ -4,6 +4,134 @@ import { useDropzone } from 'react-dropzone';
 import { Upload, FileArchive, Play, Square, Download, Terminal, Trash2, Circle, Loader2 } from 'lucide-react';
 import { getWorkspace, uploadVersion, startSimulator, stopSimulator, getSimulatorStatus, getKubeconfigUrl, deleteVersion, getResourceHistory, type ResourceHistoryResult } from '../api/client';
 import type { Workspace } from '../types';
+import { diffLines } from 'diff';
+
+const DiffView: React.FC<{ oldText: string; newText: string }> = ({ oldText, newText }) => {
+  const diff = diffLines(oldText, newText);
+
+  return (
+    <div className="font-mono text-xs overflow-x-auto bg-white border rounded">
+      {diff.map((part, index) => {
+        const color = part.added ? 'bg-green-100 text-green-800' : part.removed ? 'bg-red-100 text-red-800' : 'text-gray-600';
+        const prefix = part.added ? '+ ' : part.removed ? '- ' : '  ';
+        return (
+          <div key={index} className={`${color} whitespace-pre-wrap`}>
+            {part.value.split('\n').map((line, i) => {
+                if (i === part.value.split('\n').length - 1 && line === '') return null; // Skip last empty line from split
+                return <div key={i} className="px-2">{prefix}{line}</div>;
+            })}
+          </div>
+        );
+      })}
+    </div>
+  );
+};
+
+const ResourceHistoryCard: React.FC<{
+  result: ResourceHistoryResult;
+  allResults: ResourceHistoryResult[];
+  index: number;
+}> = ({ result, allResults, index }) => {
+  const [viewMode, setViewMode] = useState<'collapsed' | 'raw' | 'diff'>('collapsed');
+  const [compareVersionId, setCompareVersionId] = useState<string>(
+    index > 0 ? allResults[index - 1].versionID : ''
+  );
+
+  const compareResult = allResults.find(r => r.versionID === compareVersionId);
+
+  return (
+    <div className="border rounded-md overflow-hidden">
+      <div className={`px-4 py-2 bg-gray-50 border-b flex justify-between items-center ${
+        result.status === 'found' ? 'border-green-200 bg-green-50' :
+        result.status === 'not_found' ? 'border-yellow-200 bg-yellow-50' :
+        'border-gray-200'
+      }`}>
+        <div className="flex items-center gap-4">
+          <span className="font-medium text-sm text-gray-700">Version: {result.versionID}</span>
+          <span className={`text-xs px-2 py-1 rounded-full ${
+            result.status === 'found' ? 'bg-green-100 text-green-800' :
+            result.status === 'not_found' ? 'bg-yellow-100 text-yellow-800' :
+            result.status === 'stopped' ? 'bg-gray-100 text-gray-800' :
+            'bg-red-100 text-red-800'
+          }`}>
+            {result.status === 'found' ? 'Found' :
+             result.status === 'not_found' ? 'Not Found' :
+             result.status === 'stopped' ? 'Container Stopped' : 'Error'}
+          </span>
+        </div>
+
+        {result.status === 'found' && (
+          <div className="flex items-center gap-2">
+            {viewMode === 'diff' && (
+              <select
+                value={compareVersionId}
+                onChange={(e) => setCompareVersionId(e.target.value)}
+                className="text-xs border-gray-300 rounded-md shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
+              >
+                <option value="" disabled>Compare with...</option>
+                {allResults.map((r) => (
+                  r.versionID !== result.versionID && (
+                    <option key={r.versionID} value={r.versionID}>
+                      {r.versionID}
+                    </option>
+                  )
+                ))}
+              </select>
+            )}
+            {viewMode === 'collapsed' ? (
+              <>
+                <button
+                  onClick={() => setViewMode('raw')}
+                  className="text-xs text-gray-600 hover:text-gray-900 font-medium"
+                >
+                  Show YAML
+                </button>
+                <button
+                  onClick={() => setViewMode('diff')}
+                  className="text-xs text-indigo-600 hover:text-indigo-900 font-medium"
+                >
+                  Show Diff
+                </button>
+              </>
+            ) : (
+              <>
+                <button
+                  onClick={() => setViewMode(viewMode === 'raw' ? 'diff' : 'raw')}
+                  className="text-xs text-indigo-600 hover:text-indigo-900 font-medium"
+                >
+                  {viewMode === 'raw' ? 'Show Diff' : 'Show YAML'}
+                </button>
+                <button
+                  onClick={() => setViewMode('collapsed')}
+                  className="text-xs text-gray-600 hover:text-gray-900 font-medium"
+                >
+                  Hide
+                </button>
+              </>
+            )}
+          </div>
+        )}
+      </div>
+
+      {result.status === 'found' && viewMode !== 'collapsed' && (
+        <div className="p-0">
+          {viewMode === 'diff' && compareResult ? (
+            <DiffView oldText={compareResult.content || ''} newText={result.content} />
+          ) : (
+            <pre className="p-4 bg-gray-900 text-gray-100 text-xs overflow-x-auto font-mono">
+              {result.content}
+            </pre>
+          )}
+        </div>
+      )}
+      {result.error && (
+        <div className="p-4 text-sm text-red-600 bg-red-50">
+          {result.error}
+        </div>
+      )}
+    </div>
+  );
+};
 
 export const WorkspaceDetail: React.FC = () => {
   const { name } = useParams<{ name: string }>();
@@ -278,36 +406,8 @@ export const WorkspaceDetail: React.FC = () => {
 
         {historyResults.length > 0 && (
           <div className="space-y-4">
-            {historyResults.map((result) => (
-              <div key={result.versionID} className="border rounded-md overflow-hidden">
-                <div className={`px-4 py-2 bg-gray-50 border-b flex justify-between items-center ${
-                  result.status === 'found' ? 'border-green-200 bg-green-50' : 
-                  result.status === 'not_found' ? 'border-yellow-200 bg-yellow-50' : 
-                  'border-gray-200'
-                }`}>
-                  <span className="font-medium text-sm text-gray-700">Version: {result.versionID}</span>
-                  <span className={`text-xs px-2 py-1 rounded-full ${
-                    result.status === 'found' ? 'bg-green-100 text-green-800' :
-                    result.status === 'not_found' ? 'bg-yellow-100 text-yellow-800' :
-                    result.status === 'stopped' ? 'bg-gray-100 text-gray-800' :
-                    'bg-red-100 text-red-800'
-                  }`}>
-                    {result.status === 'found' ? 'Found' :
-                     result.status === 'not_found' ? 'Not Found' :
-                     result.status === 'stopped' ? 'Container Stopped' : 'Error'}
-                  </span>
-                </div>
-                {result.status === 'found' && (
-                  <pre className="p-4 bg-gray-900 text-gray-100 text-xs overflow-x-auto font-mono">
-                    {result.content}
-                  </pre>
-                )}
-                {result.error && (
-                  <div className="p-4 text-sm text-red-600 bg-red-50">
-                    {result.error}
-                  </div>
-                )}
-              </div>
+            {historyResults.map((result, index) => (
+              <ResourceHistoryCard key={result.versionID} result={result} allResults={historyResults} index={index} />
             ))}
           </div>
         )}

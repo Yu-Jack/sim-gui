@@ -1,5 +1,5 @@
 import axios from 'axios';
-import type { Workspace, Version } from '../types';
+import type { Workspace } from '../types';
 
 const client = axios.create({
   baseURL: 'http://localhost:8080/api',

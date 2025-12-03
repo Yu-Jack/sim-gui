@@ -67,3 +67,20 @@ export const getResourceHistory = async (workspaceName: string, resource: string
   const response = await client.post<ResourceHistoryResult[]>(`/workspaces/${workspaceName}/resource-history`, { resource });
   return response.data;
 };
+
+export const getNamespaces = async (workspaceName: string) => {
+  const response = await client.get<string[]>(`/workspaces/${workspaceName}/namespaces`);
+  return response.data;
+};
+
+export const getResourceTypes = async (workspaceName: string) => {
+  const response = await client.get<string[]>(`/workspaces/${workspaceName}/resource-types`);
+  return response.data;
+};
+
+export const getResources = async (workspaceName: string, namespace: string, resourceType: string, keyword: string) => {
+  const response = await client.get<string[]>(`/workspaces/${workspaceName}/resources`, {
+    params: { namespace, resourceType, keyword }
+  });
+  return response.data;
+};

@@ -49,6 +49,9 @@ func (s *Server) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/workspaces/{name}/versions/{versionID}/kubeconfig", s.handleGetKubeconfig)
 	mux.HandleFunc("DELETE /api/workspaces/{name}/versions/{versionID}", s.handleDeleteVersion)
 	mux.HandleFunc("POST /api/workspaces/{name}/resource-history", s.handleGetResourceHistory)
+	mux.HandleFunc("GET /api/workspaces/{name}/namespaces", s.handleGetNamespaces)
+	mux.HandleFunc("GET /api/workspaces/{name}/resource-types", s.handleGetResourceTypes)
+	mux.HandleFunc("GET /api/workspaces/{name}/resources", s.handleGetResources)
 }
 
 func (s *Server) handleListWorkspaces(w http.ResponseWriter, r *http.Request) {
@@ -572,17 +575,17 @@ func (s *Server) handleGetResourceHistory(w http.ResponseWriter, r *http.Request
 		// Execute kubectl get <resource> -o yaml
 		// Support format: namespace/type/name or type/name
 		parts := strings.Split(req.Resource, "/")
-		var cmd []string
+		var args []string
 		if len(parts) == 3 {
 			namespace := parts[0]
 			resourceType := parts[1]
 			resourceName := parts[2]
-			cmd = []string{"kubectl", "get", resourceType, resourceName, "-n", namespace, "-o", "yaml"}
+			args = []string{"get", resourceType, resourceName, "-n", namespace, "-o", "yaml"}
 		} else {
-			cmd = []string{"kubectl", "get", req.Resource, "-o", "yaml"}
+			args = []string{"get", req.Resource, "-o", "yaml"}
 		}
-		env := []string{"KUBECONFIG=/root/.sim/admin.kubeconfig"}
-		stdout, stderr, err := s.docker.ExecContainer(instanceName, cmd, env)
+
+		stdout, stderr, err := s.execKubectl(instanceName, args...)
 
 		if err != nil {
 			results = append(results, VersionResult{
@@ -611,4 +614,116 @@ func (s *Server) handleGetResourceHistory(w http.ResponseWriter, r *http.Request
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(results)
+}
+
+func (s *Server) handleGetNamespaces(w http.ResponseWriter, r *http.Request) {
+	name := r.PathValue("name")
+	ws, err := s.store.GetWorkspace(name)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusNotFound)
+		return
+	}
+
+	instanceName, err := s.findLatestRunningInstance(name, ws)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusNotFound)
+		return
+	}
+
+	stdout, _, err := s.execKubectl(instanceName, "get", "namespaces", "-o", "jsonpath={.items[*].metadata.name}")
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	namespaces := strings.Split(strings.TrimSpace(stdout), " ")
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(namespaces)
+}
+
+func (s *Server) handleGetResourceTypes(w http.ResponseWriter, r *http.Request) {
+	name := r.PathValue("name")
+	ws, err := s.store.GetWorkspace(name)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusNotFound)
+		return
+	}
+
+	instanceName, err := s.findLatestRunningInstance(name, ws)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusNotFound)
+		return
+	}
+
+	stdout, _, err := s.execKubectl(instanceName, "api-resources", "--verbs=list", "-o", "name")
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	resources := strings.Split(strings.TrimSpace(stdout), "\n")
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(resources)
+}
+
+func (s *Server) handleGetResources(w http.ResponseWriter, r *http.Request) {
+	name := r.PathValue("name")
+	namespace := r.URL.Query().Get("namespace")
+	resourceType := r.URL.Query().Get("resourceType")
+	keyword := r.URL.Query().Get("keyword")
+
+	if namespace == "" || resourceType == "" {
+		http.Error(w, "namespace and resourceType are required", http.StatusBadRequest)
+		return
+	}
+
+	ws, err := s.store.GetWorkspace(name)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusNotFound)
+		return
+	}
+
+	instanceName, err := s.findLatestRunningInstance(name, ws)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusNotFound)
+		return
+	}
+
+	stdout, _, err := s.execKubectl(instanceName, "get", resourceType, "-n", namespace, "-o", "jsonpath={.items[*].metadata.name}")
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	allResources := strings.Split(strings.TrimSpace(stdout), " ")
+	var filtered []string
+	for _, res := range allResources {
+		if res == "" {
+			continue
+		}
+		if keyword == "" || strings.Contains(res, keyword) {
+			filtered = append(filtered, res)
+		}
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(filtered)
+}
+
+func (s *Server) findLatestRunningInstance(name string, ws *model.Workspace) (string, error) {
+	for i := len(ws.Versions) - 1; i >= 0; i-- {
+		v := ws.Versions[i]
+		iname := fmt.Sprintf("%s-%s", name, v.ID)
+		containers, err := s.docker.FindRunningContainer(iname)
+		if err == nil && len(containers) > 0 {
+			return iname, nil
+		}
+	}
+	return "", fmt.Errorf("no running simulator found")
+}
+
+func (s *Server) execKubectl(instanceName string, args ...string) (string, string, error) {
+	cmd := append([]string{"kubectl"}, args...)
+	env := []string{"KUBECONFIG=/root/.sim/admin.kubeconfig"}
+	return s.docker.ExecContainer(instanceName, cmd, env)
 }

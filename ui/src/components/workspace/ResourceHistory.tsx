@@ -1,7 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Loader2 } from 'lucide-react';
 import { diffLines } from 'diff';
-import { getResourceHistory, type ResourceHistoryResult } from '../../api/client';
+import { getResourceHistory, getNamespaces, getResourceTypes, getResources, type ResourceHistoryResult } from '../../api/client';
 
 const DiffView: React.FC<{ oldText: string; newText: string }> = ({ oldText, newText }) => {
   const diff = diffLines(oldText, newText);
@@ -137,15 +137,53 @@ interface ResourceHistoryProps {
 export const ResourceHistory: React.FC<ResourceHistoryProps> = ({
   workspaceName,
 }) => {
-  const [resourceQuery, setResourceQuery] = useState('');
+  const [namespace, setNamespace] = useState('');
+  const [resourceType, setResourceType] = useState('');
+  const [resourceName, setResourceName] = useState('');
+  
+  const [availableNamespaces, setAvailableNamespaces] = useState<string[]>([]);
+  const [availableResourceTypes, setAvailableResourceTypes] = useState<string[]>([]);
+  const [resourceNameSuggestions, setResourceNameSuggestions] = useState<string[]>([]);
+  const [showSuggestions, setShowSuggestions] = useState(false);
+  
   const [historyResults, setHistoryResults] = useState<ResourceHistoryResult[]>([]);
   const [isSearching, setIsSearching] = useState(false);
 
+  useEffect(() => {
+    if (workspaceName) {
+      getNamespaces(workspaceName).then(setAvailableNamespaces).catch(console.error);
+      getResourceTypes(workspaceName).then(setAvailableResourceTypes).catch(console.error);
+    }
+  }, [workspaceName]);
+
+  useEffect(() => {
+    const timer = setTimeout(async () => {
+      if (workspaceName && namespace && resourceType && resourceName) {
+        try {
+          const suggestions = await getResources(workspaceName, namespace, resourceType, resourceName);
+          setResourceNameSuggestions(suggestions || []);
+          setShowSuggestions(true);
+        } catch (error) {
+          console.error('Failed to fetch resource suggestions', error);
+        }
+      } else {
+        setResourceNameSuggestions([]);
+        setShowSuggestions(false);
+      }
+    }, 500);
+
+    return () => clearTimeout(timer);
+  }, [workspaceName, namespace, resourceType, resourceName]);
+
   const handleSearch = async () => {
-    if (!workspaceName || !resourceQuery.trim()) return;
+    if (!workspaceName || !resourceType.trim() || !resourceName.trim()) return;
+    
+    const queryNamespace = namespace.trim() || 'default';
+    const query = `${queryNamespace}/${resourceType}/${resourceName}`;
+    
     setIsSearching(true);
     try {
-      const results = await getResourceHistory(workspaceName, resourceQuery);
+      const results = await getResourceHistory(workspaceName, query);
       setHistoryResults(results);
     } catch (error) {
       console.error('Failed to search resource', error);
@@ -158,19 +196,74 @@ export const ResourceHistory: React.FC<ResourceHistoryProps> = ({
   return (
     <div className="bg-white shadow sm:rounded-lg p-6">
       <h3 className="text-lg font-medium leading-6 text-gray-900 mb-4">Resource History Search</h3>
-      <div className="flex gap-4 mb-6">
-        <input
-          type="text"
-          value={resourceQuery}
-          onChange={(e) => setResourceQuery(e.target.value)}
-          placeholder="e.g. pod/my-pod or namespace/pod/my-pod"
-          className="flex-1 rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm border p-2"
-          onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
-        />
+      <div className="flex gap-4 mb-6 items-end">
+        <div className="flex-1">
+          <label className="block text-sm font-medium text-gray-700 mb-1">Namespace</label>
+          <input
+            type="text"
+            list="namespaces"
+            value={namespace}
+            onChange={(e) => setNamespace(e.target.value)}
+            placeholder="default"
+            className="w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm border p-2"
+          />
+          <datalist id="namespaces">
+            {availableNamespaces.map(ns => <option key={ns} value={ns} />)}
+          </datalist>
+        </div>
+
+        <div className="flex-1">
+          <label className="block text-sm font-medium text-gray-700 mb-1">Resource Type</label>
+          <input
+            type="text"
+            list="resourceTypes"
+            value={resourceType}
+            onChange={(e) => setResourceType(e.target.value)}
+            placeholder="e.g. pods"
+            className="w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm border p-2"
+          />
+          <datalist id="resourceTypes">
+            {availableResourceTypes.map(rt => <option key={rt} value={rt} />)}
+          </datalist>
+        </div>
+
+        <div className="flex-1 relative">
+          <label className="block text-sm font-medium text-gray-700 mb-1">Resource Name</label>
+          <input
+            type="text"
+            value={resourceName}
+            onChange={(e) => setResourceName(e.target.value)}
+            onFocus={() => {
+                if (resourceNameSuggestions.length > 0) setShowSuggestions(true);
+            }}
+            onBlur={() => setTimeout(() => setShowSuggestions(false), 200)}
+            placeholder="e.g. my-pod"
+            className="w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm border p-2"
+            onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
+          />
+          {showSuggestions && resourceNameSuggestions.length > 0 && (
+            <ul className="absolute z-10 mt-1 w-full bg-white shadow-lg max-h-60 rounded-md py-1 text-base ring-1 ring-black ring-opacity-5 overflow-auto focus:outline-none sm:text-sm">
+              {resourceNameSuggestions.map((suggestion) => (
+                <li
+                  key={suggestion}
+                  className="cursor-pointer select-none relative py-2 pl-3 pr-9 hover:bg-indigo-600 hover:text-white text-gray-900"
+                  onClick={() => {
+                    setResourceName(suggestion);
+                    setShowSuggestions(false);
+                  }}
+                >
+                  <span className="block truncate">{suggestion}</span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+
+
         <button
           onClick={handleSearch}
-          disabled={isSearching || !resourceQuery.trim()}
-          className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:opacity-50"
+          disabled={isSearching || !resourceType.trim() || !resourceName.trim()}
+          className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:opacity-50 h-[38px]"
         >
           {isSearching ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
           Search

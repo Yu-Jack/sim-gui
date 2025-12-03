@@ -147,6 +147,20 @@ export const VersionList: React.FC<VersionListProps> = ({
                     <Terminal className="h-4 w-4 mr-1" />
                     Copy k9s Command
                   </button>
+                  <button
+                    onClick={() => {
+                        if (!isRunning) return;
+                        const kubeconfigPath = `/tmp/sim-${workspace.name}-${version.id}.kubeconfig`;
+                        const cmd = `curl -s -o ${kubeconfigPath} http://localhost:8080${getKubeconfigUrl(workspace.name, version.id)} && export KUBECONFIG=${kubeconfigPath}`;
+                        navigator.clipboard.writeText(cmd);
+                        alert('Copied export command to clipboard!');
+                    }}
+                    className={`inline-flex items-center px-3 py-1 border border-transparent text-xs font-medium rounded-md ${isRunning ? 'text-gray-700 bg-gray-100 hover:bg-gray-200' : 'text-gray-400 bg-gray-100 cursor-not-allowed'}`}
+                    disabled={!isRunning || !!isLoading}
+                  >
+                    <Terminal className="h-4 w-4 mr-1" />
+                    Copy Export Command
+                  </button>
                 </div>
               </div>
             </li>

@@ -196,8 +196,8 @@ export const ResourceHistory: React.FC<ResourceHistoryProps> = ({
   return (
     <div className="bg-white shadow sm:rounded-lg p-6">
       <h3 className="text-lg font-medium leading-6 text-gray-900 mb-4">Resource History Search</h3>
-      <div className="flex gap-4 mb-6 items-end">
-        <div className="flex-1">
+      <div className="space-y-4 mb-6">
+        <div>
           <label className="block text-sm font-medium text-gray-700 mb-1">Namespace</label>
           <input
             type="text"
@@ -212,7 +212,7 @@ export const ResourceHistory: React.FC<ResourceHistoryProps> = ({
           </datalist>
         </div>
 
-        <div className="flex-1">
+        <div>
           <label className="block text-sm font-medium text-gray-700 mb-1">Resource Type</label>
           <input
             type="text"
@@ -227,7 +227,7 @@ export const ResourceHistory: React.FC<ResourceHistoryProps> = ({
           </datalist>
         </div>
 
-        <div className="flex-1 relative">
+        <div className="relative">
           <label className="block text-sm font-medium text-gray-700 mb-1">Resource Name</label>
           <input
             type="text"
@@ -258,8 +258,9 @@ export const ResourceHistory: React.FC<ResourceHistoryProps> = ({
             </ul>
           )}
         </div>
+      </div>
 
-
+      <div className="flex justify-end mb-6">
         <button
           onClick={handleSearch}
           disabled={isSearching || !resourceType.trim() || !resourceName.trim()}

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"sort"
 	"strings"
 	"time"
 
@@ -216,28 +217,35 @@ func (s *Server) handleGetResources(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	instanceName, err := utils.FindLatestRunningInstance(name, ws, s.docker)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusNotFound)
-		return
-	}
+	resourceMap := make(map[string]bool)
 
-	stdout, _, err := utils.ExecKubectl(s.docker, instanceName, "get", resourceType, "-n", namespace, "-o", "jsonpath={.items[*].metadata.name}")
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	allResources := strings.Split(strings.TrimSpace(stdout), " ")
-	var filtered []string
-	for _, res := range allResources {
-		if res == "" {
+	for _, v := range ws.Versions {
+		instanceName := fmt.Sprintf("%s-%s", name, v.ID)
+		containers, err := s.docker.FindRunningContainer(instanceName)
+		if err != nil || len(containers) == 0 {
 			continue
 		}
+
+		stdout, _, err := utils.ExecKubectl(s.docker, instanceName, "get", resourceType, "-n", namespace, "-o", "jsonpath={.items[*].metadata.name}")
+		if err != nil {
+			continue
+		}
+
+		resources := strings.Split(strings.TrimSpace(stdout), " ")
+		for _, res := range resources {
+			if res != "" {
+				resourceMap[res] = true
+			}
+		}
+	}
+
+	var filtered []string
+	for res := range resourceMap {
 		if keyword == "" || strings.Contains(res, keyword) {
 			filtered = append(filtered, res)
 		}
 	}
+	sort.Strings(filtered)
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(filtered)

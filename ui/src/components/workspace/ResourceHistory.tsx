@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Loader2 } from 'lucide-react';
+import { Loader2, FileText } from 'lucide-react';
 import { diffLines } from 'diff';
 import { getResourceHistory, getNamespaces, getResourceTypes, getResources, type ResourceHistoryResult } from '../../api/client';
 
@@ -24,12 +24,14 @@ const DiffView: React.FC<{ oldText: string; newText: string }> = ({ oldText, new
   );
 };
 
-const ResourceHistoryCard: React.FC<{
+const ResourceDetailView: React.FC<{
   result: ResourceHistoryResult;
   allResults: ResourceHistoryResult[];
   index: number;
 }> = ({ result, allResults, index }) => {
-  const [viewMode, setViewMode] = useState<'collapsed' | 'raw' | 'diff'>('collapsed');
+  const [viewMode, setViewMode] = useState<'raw' | 'diff'>(
+    allResults.length > 1 && index > 0 ? 'diff' : 'raw'
+  );
   const [compareVersionId, setCompareVersionId] = useState<string>(
     index > 0 ? allResults[index - 1].versionID : ''
   );
@@ -37,95 +39,84 @@ const ResourceHistoryCard: React.FC<{
   const compareResult = allResults.find(r => r.versionID === compareVersionId);
 
   return (
-    <div className="border rounded-md overflow-hidden">
-      <div className={`px-4 py-2 bg-gray-50 border-b flex justify-between items-center ${
-        result.status === 'found' ? 'border-green-200 bg-green-50' :
-        result.status === 'not_found' ? 'border-yellow-200 bg-yellow-50' :
-        'border-gray-200'
-      }`}>
-        <div className="flex items-center gap-4">
-          <span className="font-medium text-sm text-gray-700">Version: {result.versionID}</span>
-          <span className={`text-xs px-2 py-1 rounded-full ${
-            result.status === 'found' ? 'bg-green-100 text-green-800' :
-            result.status === 'not_found' ? 'bg-yellow-100 text-yellow-800' :
-            result.status === 'stopped' ? 'bg-gray-100 text-gray-800' :
-            'bg-red-100 text-red-800'
-          }`}>
-            {result.status === 'found' ? 'Found' :
-             result.status === 'not_found' ? 'Not Found' :
-             result.status === 'stopped' ? 'Container Stopped' : 'Error'}
-          </span>
+    <div className="mt-6 border rounded-md overflow-hidden bg-white shadow-sm">
+        <div className="px-4 py-3 bg-gray-50 border-b flex justify-between items-center">
+            <div className="flex items-center gap-4">
+                <h4 className="font-medium text-gray-900">
+                    Details for {result.versionID}
+                </h4>
+                <span className={`text-xs px-2 py-1 rounded-full ${
+                    result.status === 'found' ? 'bg-green-100 text-green-800' :
+                    result.status === 'not_found' ? 'bg-yellow-100 text-yellow-800' :
+                    result.status === 'stopped' ? 'bg-gray-100 text-gray-800' :
+                    'bg-red-100 text-red-800'
+                }`}>
+                    {result.status === 'found' ? 'Found' :
+                     result.status === 'not_found' ? 'Not Found' :
+                     result.status === 'stopped' ? 'Container Stopped' : 'Error'}
+                </span>
+            </div>
+            
+            {result.status === 'found' && (
+                <div className="flex items-center gap-3">
+                    <div className="flex items-center gap-2">
+                        <label className="text-xs text-gray-600">Compare with:</label>
+                        <select
+                            value={compareVersionId}
+                            onChange={(e) => {
+                                setCompareVersionId(e.target.value);
+                                setViewMode('diff');
+                            }}
+                            className="text-xs border-gray-300 rounded-md shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
+                        >
+                            <option value="">None</option>
+                            {allResults.map((r) => (
+                                r.versionID !== result.versionID && (
+                                    <option key={r.versionID} value={r.versionID}>
+                                        {r.versionID}
+                                    </option>
+                                )
+                            ))}
+                        </select>
+                    </div>
+                    
+                    <div className="flex bg-gray-200 rounded-lg p-1">
+                        <button
+                            onClick={() => setViewMode('raw')}
+                            className={`px-3 py-1 text-xs font-medium rounded-md transition-colors ${
+                                viewMode === 'raw' ? 'bg-white text-gray-900 shadow' : 'text-gray-600 hover:text-gray-900'
+                            }`}
+                        >
+                            YAML
+                        </button>
+                        <button
+                            onClick={() => setViewMode('diff')}
+                            className={`px-3 py-1 text-xs font-medium rounded-md transition-colors ${
+                                viewMode === 'diff' ? 'bg-white text-gray-900 shadow' : 'text-gray-600 hover:text-gray-900'
+                            }`}
+                        >
+                            Diff
+                        </button>
+                    </div>
+                </div>
+            )}
         </div>
 
-        {result.status === 'found' && (
-          <div className="flex items-center gap-2">
-            {viewMode === 'diff' && (
-              <select
-                value={compareVersionId}
-                onChange={(e) => setCompareVersionId(e.target.value)}
-                className="text-xs border-gray-300 rounded-md shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
-              >
-                <option value="" disabled>Compare with...</option>
-                {allResults.map((r) => (
-                  r.versionID !== result.versionID && (
-                    <option key={r.versionID} value={r.versionID}>
-                      {r.versionID}
-                    </option>
-                  )
-                ))}
-              </select>
-            )}
-            {viewMode === 'collapsed' ? (
-              <>
-                <button
-                  onClick={() => setViewMode('raw')}
-                  className="text-xs text-gray-600 hover:text-gray-900 font-medium"
-                >
-                  Show YAML
-                </button>
-                <button
-                  onClick={() => setViewMode('diff')}
-                  className="text-xs text-indigo-600 hover:text-indigo-900 font-medium"
-                >
-                  Show Diff
-                </button>
-              </>
-            ) : (
-              <>
-                <button
-                  onClick={() => setViewMode(viewMode === 'raw' ? 'diff' : 'raw')}
-                  className="text-xs text-indigo-600 hover:text-indigo-900 font-medium"
-                >
-                  {viewMode === 'raw' ? 'Show Diff' : 'Show YAML'}
-                </button>
-                <button
-                  onClick={() => setViewMode('collapsed')}
-                  className="text-xs text-gray-600 hover:text-gray-900 font-medium"
-                >
-                  Hide
-                </button>
-              </>
-            )}
-          </div>
-        )}
-      </div>
-
-      {result.status === 'found' && viewMode !== 'collapsed' && (
         <div className="p-0">
-          {viewMode === 'diff' && compareResult ? (
-            <DiffView oldText={compareResult.content || ''} newText={result.content} />
-          ) : (
-            <pre className="p-4 bg-gray-900 text-gray-100 text-xs overflow-x-auto font-mono">
-              {result.content}
-            </pre>
-          )}
+            {result.status === 'found' ? (
+                viewMode === 'diff' && compareResult ? (
+                    <DiffView oldText={compareResult.content || ''} newText={result.content} />
+                ) : (
+                    <pre className="p-4 bg-gray-900 text-gray-100 text-xs overflow-x-auto font-mono">
+                        {result.content}
+                    </pre>
+                )
+            ) : (
+                <div className="p-8 text-center text-gray-500">
+                    {result.error || 'Resource not found in this version.'}
+                </div>
+            )}
         </div>
-      )}
-      {result.error && (
-        <div className="p-4 text-sm text-red-600 bg-red-50">
-          {result.error}
-        </div>
-      )}
     </div>
   );
 };
@@ -148,6 +139,7 @@ export const ResourceHistory: React.FC<ResourceHistoryProps> = ({
   
   const [historyResults, setHistoryResults] = useState<ResourceHistoryResult[]>([]);
   const [isSearching, setIsSearching] = useState(false);
+  const [selectedVersionId, setSelectedVersionId] = useState<string>('');
 
   useEffect(() => {
     if (workspaceName) {
@@ -185,6 +177,11 @@ export const ResourceHistory: React.FC<ResourceHistoryProps> = ({
     try {
       const results = await getResourceHistory(workspaceName, query);
       setHistoryResults(results);
+      if (results.length > 0) {
+        setSelectedVersionId(results[results.length - 1].versionID);
+      } else {
+        setSelectedVersionId('');
+      }
     } catch (error) {
       console.error('Failed to search resource', error);
       alert('Failed to search resource');
@@ -272,10 +269,60 @@ export const ResourceHistory: React.FC<ResourceHistoryProps> = ({
       </div>
 
       {historyResults.length > 0 && (
-        <div className="space-y-4">
-          {historyResults.map((result, index) => (
-            <ResourceHistoryCard key={result.versionID} result={result} allResults={historyResults} index={index} />
-          ))}
+        <div className="mt-8">
+            <div className="overflow-x-auto pb-8">
+                <div className="relative min-w-max px-8 pt-4">
+                    <div className="absolute left-8 right-8 top-[2.25rem] h-0.5 bg-gray-200 -z-10" />
+                    
+                    <div className="flex items-start gap-12">
+                        {historyResults.map((result) => {
+                            const isSelected = selectedVersionId === result.versionID;
+                            const isFound = result.status === 'found';
+                            
+                            return (
+                                <div 
+                                    key={result.versionID} 
+                                    className="flex flex-col items-center gap-2 cursor-pointer group"
+                                    onClick={() => setSelectedVersionId(result.versionID)}
+                                >
+                                    <div className={`
+                                        w-14 h-14 rounded-full flex items-center justify-center border-2 transition-all duration-200 bg-white
+                                        ${isSelected 
+                                            ? 'border-indigo-600 ring-4 ring-indigo-100 scale-110' 
+                                            : 'border-gray-300 hover:border-indigo-400'
+                                        }
+                                    `}>
+                                        <FileText className={`w-6 h-6 ${
+                                            isFound ? 'text-indigo-600' : 'text-gray-400'
+                                        }`} />
+                                    </div>
+                                    
+                                    <div className="text-center">
+                                        <div className={`text-sm font-medium ${isSelected ? 'text-indigo-600' : 'text-gray-900'}`}>
+                                            {result.versionID}
+                                        </div>
+                                        <div className={`text-xs font-medium ${
+                                            result.status === 'found' ? 'text-green-600' : 'text-yellow-600'
+                                        }`}>
+                                            {result.status === 'found' ? 'Found' : 'Missing'}
+                                        </div>
+                                    </div>
+                                </div>
+                            );
+                        })}
+                        
+                    </div>
+                </div>
+            </div>
+
+            {selectedVersionId && (
+                <ResourceDetailView 
+                    key={selectedVersionId}
+                    result={historyResults.find(r => r.versionID === selectedVersionId)!}
+                    allResults={historyResults}
+                    index={historyResults.findIndex(r => r.versionID === selectedVersionId)}
+                />
+            )}
         </div>
       )}
     </div>

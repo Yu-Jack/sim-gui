@@ -38,6 +38,18 @@ const ResourceDetailView: React.FC<{
 
   const compareResult = allResults.find(r => r.versionID === compareVersionId);
 
+  const diffStats = React.useMemo(() => {
+    if (!compareResult || !result.content || !compareResult.content) return null;
+    const diff = diffLines(compareResult.content, result.content);
+    let added = 0;
+    let removed = 0;
+    diff.forEach((part) => {
+      if (part.added) added += part.count || 0;
+      if (part.removed) removed += part.count || 0;
+    });
+    return { added, removed };
+  }, [compareResult, result.content]);
+
   return (
     <div className="mt-6 border rounded-md overflow-hidden bg-white shadow-sm">
         <div className="px-4 py-3 bg-gray-50 border-b flex justify-between items-center">
@@ -45,6 +57,12 @@ const ResourceDetailView: React.FC<{
                 <h4 className="font-medium text-gray-900">
                     Details for {result.versionID}
                 </h4>
+                {diffStats && (
+                  <span className="text-xs font-medium flex gap-1">
+                    <span className="text-green-600">+{diffStats.added}</span>
+                    <span className="text-red-600">-{diffStats.removed}</span>
+                  </span>
+                )}
                 <span className={`text-xs px-2 py-1 rounded-full ${
                     result.status === 'found' ? 'bg-green-100 text-green-800' :
                     result.status === 'not_found' ? 'bg-yellow-100 text-yellow-800' :
@@ -136,6 +154,8 @@ export const ResourceHistory: React.FC<ResourceHistoryProps> = ({
   const [availableResourceTypes, setAvailableResourceTypes] = useState<string[]>([]);
   const [resourceNameSuggestions, setResourceNameSuggestions] = useState<string[]>([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
+  const [showNamespaceSuggestions, setShowNamespaceSuggestions] = useState(false);
+  const [showResourceTypeSuggestions, setShowResourceTypeSuggestions] = useState(false);
   
   const [historyResults, setHistoryResults] = useState<ResourceHistoryResult[]>([]);
   const [isSearching, setIsSearching] = useState(false);
@@ -154,7 +174,14 @@ export const ResourceHistory: React.FC<ResourceHistoryProps> = ({
         try {
           const suggestions = await getResources(workspaceName, namespace, resourceType, resourceName);
           setResourceNameSuggestions(suggestions || []);
-          setShowSuggestions(true);
+          // Only show suggestions if the input doesn't exactly match one of the suggestions
+          // or if there are multiple suggestions
+          if (suggestions && suggestions.length > 0) {
+             const exactMatch = suggestions.length === 1 && suggestions[0] === resourceName;
+             if (!exactMatch) {
+                 setShowSuggestions(true);
+             }
+          }
         } catch (error) {
           console.error('Failed to fetch resource suggestions', error);
         }
@@ -194,34 +221,68 @@ export const ResourceHistory: React.FC<ResourceHistoryProps> = ({
     <div className="bg-white shadow sm:rounded-lg p-6">
       <h3 className="text-lg font-medium leading-6 text-gray-900 mb-4">Resource History Search</h3>
       <div className="space-y-4 mb-6">
-        <div>
+        <div className="relative">
           <label className="block text-sm font-medium text-gray-700 mb-1">Namespace</label>
           <input
             type="text"
-            list="namespaces"
             value={namespace}
             onChange={(e) => setNamespace(e.target.value)}
+            onFocus={() => setShowNamespaceSuggestions(true)}
+            onBlur={() => setTimeout(() => setShowNamespaceSuggestions(false), 200)}
             placeholder="default"
             className="w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm border p-2"
           />
-          <datalist id="namespaces">
-            {availableNamespaces.map(ns => <option key={ns} value={ns} />)}
-          </datalist>
+          {showNamespaceSuggestions && availableNamespaces.length > 0 && (
+            <ul className="absolute z-10 mt-1 w-full bg-white shadow-lg max-h-60 rounded-md py-1 ring-1 ring-black ring-opacity-5 overflow-auto focus:outline-none text-sm">
+              {availableNamespaces
+                .filter(ns => ns.toLowerCase().includes(namespace.toLowerCase()))
+                .map(ns => (
+                  <li
+                    key={ns}
+                    className="cursor-pointer select-none relative py-2 pl-3 pr-9 hover:bg-indigo-600 hover:text-white text-gray-900"
+                    style={{ fontSize: '14px' }}
+                    onClick={() => {
+                      setNamespace(ns);
+                      setShowNamespaceSuggestions(false);
+                    }}
+                  >
+                    <span className="block truncate">{ns}</span>
+                  </li>
+                ))}
+            </ul>
+          )}
         </div>
 
-        <div>
+        <div className="relative">
           <label className="block text-sm font-medium text-gray-700 mb-1">Resource Type</label>
           <input
             type="text"
-            list="resourceTypes"
             value={resourceType}
             onChange={(e) => setResourceType(e.target.value)}
+            onFocus={() => setShowResourceTypeSuggestions(true)}
+            onBlur={() => setTimeout(() => setShowResourceTypeSuggestions(false), 200)}
             placeholder="e.g. pods"
             className="w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm border p-2"
           />
-          <datalist id="resourceTypes">
-            {availableResourceTypes.map(rt => <option key={rt} value={rt} />)}
-          </datalist>
+          {showResourceTypeSuggestions && availableResourceTypes.length > 0 && (
+            <ul className="absolute z-10 mt-1 w-full bg-white shadow-lg max-h-60 rounded-md py-1 ring-1 ring-black ring-opacity-5 overflow-auto focus:outline-none text-sm">
+              {availableResourceTypes
+                .filter(rt => rt.toLowerCase().includes(resourceType.toLowerCase()))
+                .map(rt => (
+                  <li
+                    key={rt}
+                    className="cursor-pointer select-none relative py-2 pl-3 pr-9 hover:bg-indigo-600 hover:text-white text-gray-900"
+                    style={{ fontSize: '14px' }}
+                    onClick={() => {
+                      setResourceType(rt);
+                      setShowResourceTypeSuggestions(false);
+                    }}
+                  >
+                    <span className="block truncate">{rt}</span>
+                  </li>
+                ))}
+            </ul>
+          )}
         </div>
 
         <div className="relative">
@@ -239,7 +300,7 @@ export const ResourceHistory: React.FC<ResourceHistoryProps> = ({
             onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
           />
           {showSuggestions && resourceNameSuggestions.length > 0 && (
-            <ul className="absolute z-10 mt-1 w-full bg-white shadow-lg max-h-60 rounded-md py-1 text-base ring-1 ring-black ring-opacity-5 overflow-auto focus:outline-none sm:text-sm">
+            <ul className="absolute z-10 mt-1 w-full bg-white shadow-lg max-h-60 rounded-md py-1 ring-1 ring-black ring-opacity-5 overflow-auto focus:outline-none text-sm">
               {resourceNameSuggestions.map((suggestion) => (
                 <li
                   key={suggestion}

@@ -1,5 +1,6 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { Link } from 'react-router-dom';
+import { AxiosError } from 'axios';
 import { Plus, Folder } from 'lucide-react';
 import { getWorkspaces, createWorkspace } from '../api/client';
 import type { Workspace } from '../types';
@@ -37,10 +38,11 @@ export const WorkspaceList: React.FC = () => {
       setNewWorkspaceName('');
       setIsCreating(false);
       await loadWorkspaces();
-    } catch (error: any) {
+    } catch (err) {
+      const error = err as AxiosError;
       console.error('Failed to create workspace', error);
       if (error.response && error.response.data) {
-        setError(typeof error.response.data === 'string' ? error.response.data : 'Failed to create workspace');
+        setError(typeof error.response.data === 'string' ? (error.response.data as string) : 'Failed to create workspace');
       } else {
         setError('Failed to create workspace');
       }

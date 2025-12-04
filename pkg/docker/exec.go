@@ -32,5 +32,14 @@ func (c *Client) ExecContainer(containerName string, command []string, env []str
 		return "", "", fmt.Errorf("failed to copy output: %w", err)
 	}
 
+	inspect, err := c.APIClient.ContainerExecInspect(c.ctx, execIDResp.ID)
+	if err != nil {
+		return stdout.String(), stderr.String(), fmt.Errorf("failed to inspect exec process: %w", err)
+	}
+
+	if inspect.ExitCode != 0 {
+		return stdout.String(), stderr.String(), fmt.Errorf("command failed with exit code %d: %s", inspect.ExitCode, stderr.String())
+	}
+
 	return stdout.String(), stderr.String(), nil
 }

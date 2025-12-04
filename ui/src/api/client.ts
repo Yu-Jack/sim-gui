@@ -88,3 +88,8 @@ export const getResources = async (workspaceName: string, namespace: string, res
   });
   return response.data;
 };
+
+export const startCodeServer = async (workspaceName: string, versionID: string) => {
+  const response = await client.post<{ url: string }>(`/workspaces/${workspaceName}/versions/${versionID}/code-server`);
+  return response.data;
+};

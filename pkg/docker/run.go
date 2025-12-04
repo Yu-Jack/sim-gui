@@ -245,3 +245,68 @@ func (c *Client) WaitForLogMessage(instanceName, message string) error {
 	}
 	return scanner.Err()
 }
+
+// RunCodeServer starts a code-server container
+func (c *Client) RunCodeServer(instanceName string) (string, string, error) {
+	// Check if container exists (running or stopped)
+	containers, err := c.FindContainer(instanceName)
+	if err != nil {
+		return "", "", fmt.Errorf("error finding container: %w", err)
+	}
+
+	if len(containers) == 0 {
+		// Create container
+		imageName := "codercom/code-server:latest"
+		// We don't explicitly pull here, assuming Docker daemon handles it or it's present.
+
+		resp, err := c.APIClient.ContainerCreate(c.ctx, &container.Config{
+			Image: imageName,
+			Cmd:   []string{"--auth", "none", "--bind-addr", "0.0.0.0:8080", "/home/coder/project"},
+			ExposedPorts: map[nat.Port]struct{}{
+				"8080/tcp": {},
+			},
+			Tty: false,
+			Labels: map[string]string{
+				simCliPrefix: instanceName,
+			},
+		}, &container.HostConfig{
+			AutoRemove: true,
+			PortBindings: map[nat.Port][]nat.PortBinding{
+				"8080/tcp": {
+					{
+						HostIP:   "0.0.0.0",
+						HostPort: "0", // Random port
+					},
+				},
+			},
+		}, nil, nil, instanceName)
+		if err != nil {
+			return "", "", fmt.Errorf("error creating code-server container: %w", err)
+		}
+
+		if err := c.APIClient.ContainerStart(c.ctx, resp.ID, container.StartOptions{}); err != nil {
+			return "", "", fmt.Errorf("error starting code-server container: %w", err)
+		}
+	} else {
+		// Container exists
+		containerID := containers[0].ID
+		if containers[0].State != "running" {
+			if err := c.StartContainer(containerID); err != nil {
+				return "", "", fmt.Errorf("error starting existing code-server container: %w", err)
+			}
+		}
+	}
+
+	// Inspect to get the port
+	inspect, err := c.APIClient.ContainerInspect(c.ctx, instanceName)
+	if err != nil {
+		return "", "", fmt.Errorf("error inspecting container: %w", err)
+	}
+
+	bindings := inspect.NetworkSettings.Ports["8080/tcp"]
+	if len(bindings) > 0 {
+		return fmt.Sprintf("http://localhost:%s", bindings[0].HostPort), inspect.ID, nil
+	}
+
+	return "", "", fmt.Errorf("failed to get exposed port for code-server")
+}

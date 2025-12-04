@@ -42,4 +42,6 @@ func (s *Server) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/workspaces/{name}/versions/{versionID}/status", s.handleGetSimulatorStatus)
 	mux.HandleFunc("GET /api/workspaces/{name}/versions/{versionID}/kubeconfig", s.handleGetKubeconfig)
 	mux.HandleFunc("DELETE /api/workspaces/{name}/versions/{versionID}", s.handleDeleteVersion)
+
+	mux.HandleFunc("POST /api/workspaces/{name}/versions/{versionID}/code-server", s.handleStartCodeServer)
 }

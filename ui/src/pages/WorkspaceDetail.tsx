@@ -1,14 +1,15 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { useParams } from 'react-router-dom';
-import { Upload, List, Search, Pencil } from 'lucide-react';
+import { Upload, List, Search, Pencil, Folder } from 'lucide-react';
 import { getWorkspace, getSimulatorStatus, renameWorkspace } from '../api/client';
 import type { Workspace } from '../types';
 import { UploadArea } from '../components/workspace/UploadArea';
 import { getWorkspaceDisplayName, getWorkspaceEditableName } from '../utils/workspace';
 import { VersionList } from '../components/workspace/VersionList';
 import { ResourceHistory } from '../components/workspace/ResourceHistory';
+import NodeExplorer from '../components/workspace/NodeExplorer.tsx';
 
-type Tab = 'upload' | 'versions' | 'search';
+type Tab = 'upload' | 'versions' | 'search' | 'explorer';
 
 export const WorkspaceDetail: React.FC = () => {
   const { name } = useParams<{ name: string }>();
@@ -85,10 +86,11 @@ export const WorkspaceDetail: React.FC = () => {
     { id: 'upload', label: 'Upload Bundle', icon: Upload },
     { id: 'versions', label: 'Versions', icon: List },
     { id: 'search', label: 'Resource Search', icon: Search },
+    { id: 'explorer', label: 'Node Explorer', icon: Folder },
   ];
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 h-[calc(100vh-100px)] flex flex-col">
       <div className="flex justify-between items-center">
         <div className="flex items-center gap-3">
             <h1 className="text-2xl font-semibold text-gray-900">
@@ -191,6 +193,12 @@ export const WorkspaceDetail: React.FC = () => {
 
         {activeTab === 'search' && (
           <ResourceHistory workspaceName={name} />
+        )}
+
+        {activeTab === 'explorer' && (
+          <div className="h-[calc(100vh-200px)]">
+            <NodeExplorer workspaceName={name} versions={workspace.versions} />
+          </div>
         )}
       </div>
     </div>

@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 
 	"github.com/ibrokethecloud/sim-cli/pkg/docker"
@@ -19,6 +20,16 @@ func NewServer(store store.Storage, dataDir string) (*Server, error) {
 	if err != nil {
 		return nil, err
 	}
+
+	// Pull code-server image
+	if err := cli.PullImage("codercom/code-server:latest"); err != nil {
+		fmt.Printf("Failed to pull code-server image: %v\n", err)
+	}
+
+	if err := cli.PullImage("rancher/support-bundle-kit:master-head"); err != nil {
+		fmt.Printf("Failed to pull support-bundle-kit image: %v\n", err)
+	}
+
 	return &Server{
 		store:   store,
 		dataDir: dataDir,
@@ -30,6 +41,7 @@ func (s *Server) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/workspaces", s.handleListWorkspaces)
 	mux.HandleFunc("POST /api/workspaces", s.handleCreateWorkspace)
 	mux.HandleFunc("GET /api/workspaces/{name}", s.handleGetWorkspace)
+	mux.HandleFunc("DELETE /api/workspaces/{name}", s.handleDeleteWorkspace)
 	mux.HandleFunc("PUT /api/workspaces/{name}", s.handleRenameWorkspace)
 	mux.HandleFunc("POST /api/workspaces/{name}/resource-history", s.handleGetResourceHistory)
 	mux.HandleFunc("GET /api/workspaces/{name}/namespaces", s.handleGetNamespaces)

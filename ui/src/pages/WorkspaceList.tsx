@@ -1,8 +1,8 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import { AxiosError } from 'axios';
-import { Plus, Folder, Pencil } from 'lucide-react';
-import { getWorkspaces, createWorkspace, renameWorkspace } from '../api/client';
+import { Plus, Folder, Pencil, Trash, Loader2 } from 'lucide-react';
+import { getWorkspaces, createWorkspace, renameWorkspace, deleteWorkspace } from '../api/client';
 import type { Workspace } from '../types';
 import { getWorkspaceDisplayName, getWorkspaceEditableName } from '../utils/workspace';
 
@@ -16,6 +16,7 @@ export const WorkspaceList: React.FC = () => {
   const [editingWorkspace, setEditingWorkspace] = useState<Workspace | null>(null);
   const [renameValue, setRenameValue] = useState('');
   const [isRenaming, setIsRenaming] = useState(false);
+  const [deletingWorkspace, setDeletingWorkspace] = useState<string | null>(null);
 
   const loadWorkspaces = useCallback(async () => {
     try {
@@ -72,6 +73,20 @@ export const WorkspaceList: React.FC = () => {
         alert('Failed to rename workspace');
     } finally {
         setIsRenaming(false);
+    }
+  };
+
+  const handleDelete = async (name: string) => {
+    if (!window.confirm('Are you sure you want to delete this workspace? This action cannot be undone.')) return;
+    setDeletingWorkspace(name);
+    try {
+      await deleteWorkspace(name);
+      await loadWorkspaces();
+    } catch (error) {
+      console.error('Failed to delete workspace', error);
+      alert('Failed to delete workspace');
+    } finally {
+      setDeletingWorkspace(null);
     }
   };
 
@@ -195,17 +210,36 @@ export const WorkspaceList: React.FC = () => {
                 </div>
               </div>
             </Link>
-            <button
-              onClick={(e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                setEditingWorkspace(ws);
-                setRenameValue(getWorkspaceEditableName(ws));
-              }}
-              className="absolute top-2 right-2 p-2 text-gray-400 hover:text-indigo-600 opacity-0 group-hover:opacity-100 transition-opacity bg-white rounded-full shadow-sm"
-            >
-              <Pencil className="h-4 w-4" />
-            </button>
+            <div className="absolute top-2 right-2 flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+              <button
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  setEditingWorkspace(ws);
+                  setRenameValue(getWorkspaceEditableName(ws));
+                }}
+                className="p-2 text-gray-400 hover:text-indigo-600 bg-white rounded-full shadow-sm"
+                title="Rename Workspace"
+              >
+                <Pencil className="h-4 w-4" />
+              </button>
+              <button
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  handleDelete(ws.name);
+                }}
+                disabled={deletingWorkspace === ws.name}
+                className={`p-2 text-gray-400 hover:text-red-600 bg-white rounded-full shadow-sm ${deletingWorkspace === ws.name ? 'cursor-not-allowed opacity-50' : ''}`}
+                title="Delete Workspace"
+              >
+                {deletingWorkspace === ws.name ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Trash className="h-4 w-4" />
+                )}
+              </button>
+            </div>
           </div>
         ))}
       </div>

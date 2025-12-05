@@ -336,6 +336,13 @@ func (s *Server) handleDeleteVersion(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Cleanup code-server directory
+	codeServerContainer := "sim-cli-code-server"
+	targetDir := fmt.Sprintf("/home/coder/project/%s-%s", name, versionID)
+	if _, _, err := s.docker.ExecContainer(codeServerContainer, []string{"rm", "-rf", targetDir}, nil); err != nil {
+		fmt.Printf("Failed to cleanup code-server directory: %v\n", err)
+	}
+
 	// Remove container and image if exists
 	instanceName := fmt.Sprintf("%s-%s", name, versionID)
 

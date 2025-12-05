@@ -19,6 +19,10 @@ export const renameWorkspace = async (oldName: string, newName: string) => {
   await client.put(`/workspaces/${oldName}`, { name: newName });
 };
 
+export const deleteWorkspace = async (name: string) => {
+  await client.delete(`/workspaces/${name}`);
+};
+
 export const getWorkspace = async (name: string) => {
   const response = await client.get<Workspace>(`/workspaces/${name}`);
   return response.data;

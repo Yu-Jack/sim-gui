@@ -282,3 +282,47 @@ func (s *Server) handleGetResources(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(filtered)
 }
+
+func (s *Server) handleDeleteWorkspace(w http.ResponseWriter, r *http.Request) {
+	name := r.PathValue("name")
+	ws, err := s.store.GetWorkspace(name)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusNotFound)
+		return
+	}
+
+	// Cleanup all versions
+	for _, v := range ws.Versions {
+		instanceName := fmt.Sprintf("%s-%s", name, v.ID)
+
+		// Remove container
+		if err := s.docker.RemoveContainer(instanceName); err != nil {
+			fmt.Printf("Failed to remove container %s: %v\n", instanceName, err)
+		}
+
+		// Remove images
+		_ = s.docker.RemoveImages(instanceName)
+
+		// Cleanup code-server directory
+		codeServerContainer := "sim-cli-code-server"
+		targetDir := fmt.Sprintf("/home/coder/project/%s-%s", name, v.ID)
+		if _, _, err := s.docker.ExecContainer(codeServerContainer, []string{"rm", "-rf", targetDir}, nil); err != nil {
+			fmt.Printf("Failed to cleanup code-server directory: %v\n", err)
+		}
+	}
+
+	// Remove workspace directory
+	workspacePath := fmt.Sprintf("%s/workspaces/%s", s.dataDir, name)
+	if err := os.RemoveAll(workspacePath); err != nil {
+		http.Error(w, fmt.Sprintf("Failed to remove workspace files: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	// Delete from store
+	if err := s.store.DeleteWorkspace(name); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+}

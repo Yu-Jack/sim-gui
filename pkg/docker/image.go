@@ -73,6 +73,15 @@ func (c *Client) RemoveImages(instanceName string) error {
 	return nil
 }
 
+// PullImage pulls a docker image
+func (c *Client) PullImage(imageName string) error {
+	reader, err := c.APIClient.ImagePull(c.ctx, imageName, image.PullOptions{})
+	if err != nil {
+		return err
+	}
+	return readResponse(reader)
+}
+
 // readResponse attempts to tidy up response messages
 func readResponse(resp io.ReadCloser) error {
 	defer resp.Close()

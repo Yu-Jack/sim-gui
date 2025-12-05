@@ -100,3 +100,13 @@ func (s *JSONStore) UpdateWorkspace(ws model.Workspace) error {
 	s.data[ws.Name] = ws
 	return s.save()
 }
+
+func (s *JSONStore) DeleteWorkspace(name string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if _, exists := s.data[name]; !exists {
+		return os.ErrNotExist
+	}
+	delete(s.data, name)
+	return s.save()
+}

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { startCodeServer } from '../../api/client';
 
 interface NodeExplorerProps {
@@ -11,6 +11,7 @@ const NodeExplorer: React.FC<NodeExplorerProps> = ({ workspaceName, versions }) 
   const [codeServerUrl, setCodeServerUrl] = useState<string>('');
   const [loading, setLoading] = useState<boolean>(false);
   const [error, setError] = useState<string>('');
+  const activeRequestRef = useRef<number>(0);
 
   useEffect(() => {
     if (versions.length > 0 && !selectedVersion) {
@@ -18,26 +19,34 @@ const NodeExplorer: React.FC<NodeExplorerProps> = ({ workspaceName, versions }) 
     }
   }, [versions]);
 
-  useEffect(() => {
-    if (selectedVersion) {
-      loadCodeServer();
-    }
-  }, [workspaceName, selectedVersion]);
-
-  const loadCodeServer = async () => {
+  const loadCodeServer = useCallback(async () => {
+    if (!selectedVersion) return;
+    
+    const requestId = ++activeRequestRef.current;
     setLoading(true);
     setError('');
     setCodeServerUrl('');
+    
     try {
       const data = await startCodeServer(workspaceName, selectedVersion);
-      setCodeServerUrl(data.url);
+      if (requestId === activeRequestRef.current) {
+        setCodeServerUrl(data.url);
+      }
     } catch (err: any) {
-      console.error('Failed to start code-server:', err);
-      setError(err.message || 'Failed to start code-server');
+      if (requestId === activeRequestRef.current) {
+        console.error('Failed to start code-server:', err);
+        setError(err.message || 'Failed to start code-server');
+      }
     } finally {
-      setLoading(false);
+      if (requestId === activeRequestRef.current) {
+        setLoading(false);
+      }
     }
-  };
+  }, [workspaceName, selectedVersion]);
+
+  useEffect(() => {
+    loadCodeServer();
+  }, [loadCodeServer]);
 
   return (
     <div className="h-full flex flex-col">

@@ -7,4 +7,5 @@ type Storage interface {
 	ListWorkspaces() ([]model.Workspace, error)
 	GetWorkspace(name string) (*model.Workspace, error)
 	UpdateWorkspace(workspace model.Workspace) error
+	DeleteWorkspace(name string) error
 }

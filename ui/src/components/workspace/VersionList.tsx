@@ -137,7 +137,8 @@ export const VersionList: React.FC<VersionListProps> = ({
                   <button
                     onClick={() => {
                         if (!isRunning) return;
-                        const cmd = `k9s --kubeconfig <(curl -s http://localhost:8080${getKubeconfigUrl(workspace.name, version.id)})`;
+                        const kubeconfigPath = `/tmp/sim-${workspace.name}-${version.id}.kubeconfig`;
+                        const cmd = `curl -s -o ${kubeconfigPath} http://localhost:8080${getKubeconfigUrl(workspace.name, version.id)} && export KUBECONFIG=${kubeconfigPath} && k9s`;
                         navigator.clipboard.writeText(cmd);
                         alert('Copied k9s command to clipboard!');
                     }}

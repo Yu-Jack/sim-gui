@@ -221,6 +221,38 @@ func (s *Server) handleStopSimulator(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 }
 
+func (s *Server) handleCleanVersionImage(w http.ResponseWriter, r *http.Request) {
+	name := r.PathValue("name")
+	versionID := r.PathValue("versionID")
+	instanceName := fmt.Sprintf("%s-%s", name, versionID)
+
+	// Check if container is running
+	containers, err := s.docker.FindRunningContainer(instanceName)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("Failed to check container status: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	if len(containers) > 0 {
+		http.Error(w, "Cannot clean image while simulator is running. Please stop the simulator first.", http.StatusBadRequest)
+		return
+	}
+
+	// Remove stopped containers first to avoid conflicts
+	if err := s.docker.RemoveContainer(instanceName); err != nil {
+		http.Error(w, fmt.Sprintf("Failed to remove stopped containers: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	// Remove the Docker image
+	if err := s.docker.RemoveImages(instanceName); err != nil {
+		http.Error(w, fmt.Sprintf("Failed to remove image: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+}
+
 func (s *Server) handleGetSimulatorStatus(w http.ResponseWriter, r *http.Request) {
 	name := r.PathValue("name")
 	versionID := r.PathValue("versionID")

@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
-import { FileArchive, Play, Square, Download, Terminal, Trash2, Circle, Loader2 } from 'lucide-react';
-import { getKubeconfigUrl, startSimulator, stopSimulator, deleteVersion } from '../../api/client';
+import { FileArchive, Play, Square, Download, Terminal, Trash2, Circle, Loader2, Eraser } from 'lucide-react';
+import { getKubeconfigUrl, startSimulator, stopSimulator, deleteVersion, cleanVersionImage } from '../../api/client';
 import type { Workspace } from '../../types';
 
 interface VersionListProps {
@@ -51,6 +51,21 @@ export const VersionList: React.FC<VersionListProps> = ({
     } catch (error) {
       console.error('Failed to delete version', error);
       alert('Failed to delete version');
+    } finally {
+      setLoading(prev => ({ ...prev, [versionID]: null }));
+    }
+  };
+
+  const handleCleanImage = async (versionID: string) => {
+    if (!confirm('Are you sure you want to clean the Docker image for this version? This will free up disk space.')) return;
+    setLoading(prev => ({ ...prev, [versionID]: 'clean' }));
+    try {
+      await cleanVersionImage(workspace.name, versionID);
+      alert('Docker image cleaned successfully!');
+      onRefresh();
+    } catch (error) {
+      console.error('Failed to clean image', error);
+      alert('Failed to clean image');
     } finally {
       setLoading(prev => ({ ...prev, [versionID]: null }));
     }
@@ -161,6 +176,15 @@ export const VersionList: React.FC<VersionListProps> = ({
                   >
                     <Terminal className="h-4 w-4 mr-1" />
                     Copy Export Command
+                  </button>
+                  <button
+                    onClick={() => handleCleanImage(version.id)}
+                    className={`inline-flex items-center px-3 py-1 border border-transparent text-xs font-medium rounded-md ${!isRunning ? 'text-orange-700 bg-orange-100 hover:bg-orange-200' : 'text-gray-400 bg-gray-100 cursor-not-allowed'}`}
+                    disabled={isRunning || !!isLoading}
+                    title="Clean Docker image to free up disk space (only available when simulator is stopped)"
+                  >
+                    {isLoading === 'clean' ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <Eraser className="h-4 w-4 mr-1" />}
+                    Clean Image
                   </button>
                 </div>
               </div>

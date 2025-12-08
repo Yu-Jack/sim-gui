@@ -64,6 +64,10 @@ export const deleteVersion = async (workspaceName: string, versionID: string) =>
   await client.delete(`/workspaces/${workspaceName}/versions/${versionID}`);
 };
 
+export const cleanVersionImage = async (workspaceName: string, versionID: string) => {
+  await client.post(`/workspaces/${workspaceName}/versions/${versionID}/clean-image`);
+};
+
 export interface ResourceHistoryResult {
   versionID: string;
   content: string;

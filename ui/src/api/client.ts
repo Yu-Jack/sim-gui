@@ -68,6 +68,14 @@ export const cleanVersionImage = async (workspaceName: string, versionID: string
   await client.post(`/workspaces/${workspaceName}/versions/${versionID}/clean-image`);
 };
 
+export const cleanAllWorkspaceImages = async (workspaceName: string) => {
+  await client.post(`/workspaces/${workspaceName}/clean-all`);
+};
+
+export const cleanAllImages = async () => {
+  await client.post('/clean-all');
+};
+
 export interface ResourceHistoryResult {
   versionID: string;
   content: string;

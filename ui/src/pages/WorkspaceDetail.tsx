@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { useParams } from 'react-router-dom';
-import { Upload, List, Search, Pencil, Folder } from 'lucide-react';
-import { getWorkspace, getSimulatorStatus, renameWorkspace } from '../api/client';
+import { Upload, List, Search, Pencil, Folder, Trash2, Loader2 } from 'lucide-react';
+import { getWorkspace, getSimulatorStatus, renameWorkspace, cleanAllWorkspaceImages } from '../api/client';
 import type { Workspace } from '../types';
 import { UploadArea } from '../components/workspace/UploadArea';
 import { getWorkspaceDisplayName, getWorkspaceEditableName } from '../utils/workspace';
@@ -20,6 +20,7 @@ export const WorkspaceDetail: React.FC = () => {
   const [isRenaming, setIsRenaming] = useState(false);
   const [renameValue, setRenameValue] = useState('');
   const [showRenameModal, setShowRenameModal] = useState(false);
+  const [isCleaning, setIsCleaning] = useState(false);
 
   const loadWorkspace = useCallback(async () => {
     if (!name) return;
@@ -62,6 +63,24 @@ export const WorkspaceDetail: React.FC = () => {
       return () => clearInterval(interval);
     }
   }, [workspace, loadStatuses]);
+
+  const handleCleanAll = async () => {
+    if (!name) return;
+    if (!confirm('Are you sure you want to stop all simulators and clean all Docker images for this workspace? This will free up disk space but you\'ll need to restart simulators after.')) return;
+    
+    setIsCleaning(true);
+    try {
+      await cleanAllWorkspaceImages(name);
+      alert('All containers and images cleaned successfully!');
+      await loadWorkspace();
+      await loadStatuses();
+    } catch (error) {
+      console.error('Failed to clean all images', error);
+      alert('Failed to clean all images');
+    } finally {
+      setIsCleaning(false);
+    }
+  };
 
   const handleRenameSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -106,6 +125,15 @@ export const WorkspaceDetail: React.FC = () => {
                 <Pencil className="h-5 w-5" />
             </button>
         </div>
+        <button
+          onClick={handleCleanAll}
+          disabled={isCleaning}
+          className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-orange-600 hover:bg-orange-700 disabled:opacity-50 disabled:cursor-not-allowed"
+          title="Stop all simulators and clean all Docker images"
+        >
+          {isCleaning ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Trash2 className="h-4 w-4 mr-2" />}
+          {isCleaning ? 'Cleaning...' : 'Clean All Images'}
+        </button>
       </div>
 
       {showRenameModal && (

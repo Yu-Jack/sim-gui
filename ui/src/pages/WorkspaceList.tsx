@@ -1,8 +1,8 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import { AxiosError } from 'axios';
-import { Plus, Folder, Pencil, Trash, Loader2 } from 'lucide-react';
-import { getWorkspaces, createWorkspace, renameWorkspace, deleteWorkspace } from '../api/client';
+import { Plus, Folder, Pencil, Trash, Loader2, Trash2 } from 'lucide-react';
+import { getWorkspaces, createWorkspace, renameWorkspace, deleteWorkspace, cleanAllImages } from '../api/client';
 import type { Workspace } from '../types';
 import { getWorkspaceDisplayName, getWorkspaceEditableName } from '../utils/workspace';
 
@@ -17,6 +17,7 @@ export const WorkspaceList: React.FC = () => {
   const [renameValue, setRenameValue] = useState('');
   const [isRenaming, setIsRenaming] = useState(false);
   const [deletingWorkspace, setDeletingWorkspace] = useState<string | null>(null);
+  const [isCleaningAll, setIsCleaningAll] = useState(false);
 
   const loadWorkspaces = useCallback(async () => {
     try {
@@ -90,17 +91,43 @@ export const WorkspaceList: React.FC = () => {
     }
   };
 
+  const handleCleanAll = async () => {
+    if (!window.confirm('Are you sure you want to stop ALL simulators and clean ALL Docker images across all workspaces? This will free up significant disk space but you\'ll need to restart simulators after.')) return;
+    setIsCleaningAll(true);
+    try {
+      await cleanAllImages();
+      alert('All containers and images cleaned successfully!');
+      await loadWorkspaces();
+    } catch (error) {
+      console.error('Failed to clean all images', error);
+      alert('Failed to clean all images');
+    } finally {
+      setIsCleaningAll(false);
+    }
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex justify-between items-center">
         <h1 className="text-2xl font-semibold text-gray-900">Workspaces</h1>
-        <button
-          onClick={() => { setIsCreating(true); setError(null); }}
-          className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-indigo-600 hover:bg-indigo-700"
-        >
-          <Plus className="w-4 h-4 mr-2" />
-          New Workspace
-        </button>
+        <div className="flex gap-3">
+          <button
+            onClick={handleCleanAll}
+            disabled={isCleaningAll}
+            className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-orange-600 hover:bg-orange-700 disabled:opacity-50 disabled:cursor-not-allowed"
+            title="Stop all simulators and clean all Docker images"
+          >
+            {isCleaningAll ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Trash2 className="w-4 h-4 mr-2" />}
+            {isCleaningAll ? 'Cleaning...' : 'Clean All Images'}
+          </button>
+          <button
+            onClick={() => { setIsCreating(true); setError(null); }}
+            className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-indigo-600 hover:bg-indigo-700"
+          >
+            <Plus className="w-4 h-4 mr-2" />
+            New Workspace
+          </button>
+        </div>
       </div>
 
       {isCreating && (

@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Yu-Jack/sim-gui/pkg/core"
 	"github.com/Yu-Jack/sim-gui/pkg/server/model"
 	"github.com/Yu-Jack/sim-gui/pkg/server/utils"
 )
@@ -97,6 +98,34 @@ func (s *Server) handleGetWorkspace(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	json.NewEncoder(w).Encode(ws)
+}
+
+func (s *Server) handleCleanAllWorkspaceImages(w http.ResponseWriter, r *http.Request) {
+	name := r.PathValue("name")
+
+	// Use cleaner to clean all versions and reset ready states
+	results := s.cleaner.CleanAllVersionsInWorkspace(name)
+	errors := core.FormatCleanResults(results)
+
+	if len(errors) > 0 {
+		http.Error(w, fmt.Sprintf("Some operations failed: %v", strings.Join(errors, "; ")), http.StatusInternalServerError)
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+}
+
+func (s *Server) handleCleanAllImages(w http.ResponseWriter, r *http.Request) {
+	// Use cleaner to clean all workspaces and reset ready states
+	results := s.cleaner.CleanAllWorkspaces()
+	errors := core.FormatCleanResults(results)
+
+	if len(errors) > 0 {
+		http.Error(w, fmt.Sprintf("Some operations failed: %v", strings.Join(errors, "; ")), http.StatusInternalServerError)
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
 }
 
 func (s *Server) handleGetResourceHistory(w http.ResponseWriter, r *http.Request) {

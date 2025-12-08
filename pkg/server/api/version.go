@@ -238,15 +238,9 @@ func (s *Server) handleCleanVersionImage(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	// Remove stopped containers first to avoid conflicts
-	if err := s.docker.RemoveContainer(instanceName); err != nil {
-		http.Error(w, fmt.Sprintf("Failed to remove stopped containers: %v", err), http.StatusInternalServerError)
-		return
-	}
-
-	// Remove the Docker image
-	if err := s.docker.RemoveImages(instanceName); err != nil {
-		http.Error(w, fmt.Sprintf("Failed to remove image: %v", err), http.StatusInternalServerError)
+	// Use cleaner to clean and reset ready state
+	if err := s.cleaner.CleanVersion(name, versionID); err != nil {
+		http.Error(w, fmt.Sprintf("Failed to clean version: %v", err), http.StatusInternalServerError)
 		return
 	}
 
@@ -399,27 +393,8 @@ func (s *Server) handleDeleteVersion(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) markVersionReady(workspaceName, versionID string) {
-	ws, err := s.store.GetWorkspace(workspaceName)
-	if err != nil {
-		fmt.Printf("Failed to get workspace to mark ready: %v\n", err)
-		return
-	}
-
-	updated := false
-	for i, v := range ws.Versions {
-		if v.ID == versionID {
-			if !v.Ready {
-				ws.Versions[i].Ready = true
-				updated = true
-			}
-			break
-		}
-	}
-
-	if updated {
-		if err := s.store.UpdateWorkspace(*ws); err != nil {
-			fmt.Printf("Failed to update workspace ready status: %v\n", err)
-		}
+	if err := s.cleaner.MarkVersionReady(workspaceName, versionID); err != nil {
+		fmt.Printf("Failed to mark version ready: %v\n", err)
 	}
 }
 

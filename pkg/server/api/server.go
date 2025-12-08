@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 
+	"github.com/Yu-Jack/sim-gui/pkg/core"
 	"github.com/Yu-Jack/sim-gui/pkg/docker"
 	"github.com/Yu-Jack/sim-gui/pkg/server/store"
 )
@@ -13,6 +14,7 @@ type Server struct {
 	store   store.Storage
 	dataDir string
 	docker  *docker.Client
+	cleaner *core.Cleaner
 }
 
 func NewServer(store store.Storage, dataDir string) (*Server, error) {
@@ -30,10 +32,13 @@ func NewServer(store store.Storage, dataDir string) (*Server, error) {
 		fmt.Printf("Failed to pull support-bundle-kit image: %v\n", err)
 	}
 
+	cleaner := core.NewCleaner(cli, store)
+
 	return &Server{
 		store:   store,
 		dataDir: dataDir,
 		docker:  cli,
+		cleaner: cleaner,
 	}, nil
 }
 
@@ -43,6 +48,8 @@ func (s *Server) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/workspaces/{name}", s.handleGetWorkspace)
 	mux.HandleFunc("DELETE /api/workspaces/{name}", s.handleDeleteWorkspace)
 	mux.HandleFunc("PUT /api/workspaces/{name}", s.handleRenameWorkspace)
+	mux.HandleFunc("POST /api/workspaces/{name}/clean-all", s.handleCleanAllWorkspaceImages)
+	mux.HandleFunc("POST /api/clean-all", s.handleCleanAllImages)
 	mux.HandleFunc("POST /api/workspaces/{name}/resource-history", s.handleGetResourceHistory)
 	mux.HandleFunc("GET /api/workspaces/{name}/namespaces", s.handleGetNamespaces)
 	mux.HandleFunc("GET /api/workspaces/{name}/resource-types", s.handleGetResourceTypes)

@@ -1,7 +1,7 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import { AxiosError } from 'axios';
-import { Plus, Folder, Pencil, Trash, Loader2, Trash2 } from 'lucide-react';
+import { Plus, Folder, Pencil, Trash, Loader2, Trash2, Search, ArrowUpDown } from 'lucide-react';
 import { getWorkspaces, createWorkspace, renameWorkspace, deleteWorkspace, cleanAllImages } from '../api/client';
 import type { Workspace } from '../types';
 import { getWorkspaceDisplayName, getWorkspaceEditableName } from '../utils/workspace';
@@ -20,6 +20,8 @@ export const WorkspaceList: React.FC = () => {
   const [isRenaming, setIsRenaming] = useState(false);
   const [deletingWorkspace, setDeletingWorkspace] = useState<string | null>(null);
   const [isCleaningAll, setIsCleaningAll] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
   const { showSuccess, showError } = useToast();
   const [confirmDialog, setConfirmDialog] = useState<{
     isOpen: boolean;
@@ -47,6 +49,28 @@ export const WorkspaceList: React.FC = () => {
   useEffect(() => {
     loadWorkspaces();
   }, [loadWorkspaces]);
+
+  // Filter and sort workspaces
+  const filteredAndSortedWorkspaces = useMemo(() => {
+    let filtered = workspaces;
+
+    // Apply search filter
+    if (searchQuery.trim()) {
+      const query = searchQuery.toLowerCase();
+      filtered = workspaces.filter(ws => 
+        getWorkspaceDisplayName(ws).toLowerCase().includes(query)
+      );
+    }
+
+    // Apply sorting (by time)
+    const sorted = [...filtered].sort((a, b) => {
+      const timeA = new Date(a.createdAt).getTime();
+      const timeB = new Date(b.createdAt).getTime();
+      return sortOrder === 'desc' ? timeB - timeA : timeA - timeB;
+    });
+
+    return sorted;
+  }, [workspaces, searchQuery, sortOrder]);
 
 
   const handleCreate = async (e: React.FormEvent) => {
@@ -170,6 +194,46 @@ export const WorkspaceList: React.FC = () => {
         </div>
       </div>
 
+      {/* Search and Sort Controls */}
+      <div className="bg-white shadow sm:rounded-lg p-4">
+        <div className="flex flex-col sm:flex-row gap-4">
+          {/* Search */}
+          <div className="flex-1">
+            <div className="relative">
+              <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                <Search className="h-5 w-5 text-gray-400" />
+              </div>
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="Search workspaces..."
+                className="block w-full pl-10 pr-3 py-2 border border-gray-300 rounded-md leading-5 bg-white placeholder-gray-500 focus:outline-none focus:placeholder-gray-400 focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
+              />
+            </div>
+          </div>
+
+          {/* Sort Order Toggle */}
+          <button
+            onClick={() => setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc')}
+            className="inline-flex items-center px-4 py-2 border border-gray-300 shadow-sm text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+            title={`Sort by time: ${sortOrder === 'asc' ? 'Oldest first' : 'Newest first'}`}
+          >
+            <ArrowUpDown className="h-4 w-4" />
+            <span className="ml-2">
+              {sortOrder === 'asc' ? 'Oldest' : 'Newest'}
+            </span>
+          </button>
+        </div>
+
+        {/* Results count */}
+        {searchQuery && (
+          <div className="mt-3 text-sm text-gray-500">
+            Found {filteredAndSortedWorkspaces.length} workspace{filteredAndSortedWorkspaces.length !== 1 ? 's' : ''}
+          </div>
+        )}
+      </div>
+
       {isCreating && (
         <div className="bg-white shadow sm:rounded-lg p-6">
           <form onSubmit={handleCreate} className="flex flex-col gap-4">
@@ -244,7 +308,18 @@ export const WorkspaceList: React.FC = () => {
       )}
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        {workspaces.map((ws) => (
+        {filteredAndSortedWorkspaces.length === 0 ? (
+          <div className="col-span-full text-center py-12">
+            <Folder className="mx-auto h-12 w-12 text-gray-400" />
+            <h3 className="mt-2 text-sm font-medium text-gray-900">
+              {searchQuery ? 'No workspaces found' : 'No workspaces'}
+            </h3>
+            <p className="mt-1 text-sm text-gray-500">
+              {searchQuery ? 'Try adjusting your search query' : 'Get started by creating a new workspace'}
+            </p>
+          </div>
+        ) : (
+          filteredAndSortedWorkspaces.map((ws) => (
           <div key={ws.name} className="relative group">
             <Link
               to={`/workspaces/${ws.name}`}
@@ -308,7 +383,8 @@ export const WorkspaceList: React.FC = () => {
               </button>
             </div>
           </div>
-        ))}
+        ))
+        )}
       </div>
     </div>
     </>

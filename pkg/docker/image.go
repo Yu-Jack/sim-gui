@@ -2,12 +2,10 @@ package docker
 
 import (
 	"bufio"
-	"bytes"
 	"encoding/json"
 	"fmt"
 	"io"
 
-	"github.com/docker/docker/api/types"
 	"github.com/docker/docker/api/types/filters"
 	"github.com/docker/docker/api/types/image"
 	"github.com/docker/docker/pkg/jsonmessage"
@@ -20,26 +18,10 @@ const (
 
 // CreateImage will build a new image using the predefined support-bundle-kit baseImage and layer it with the actual
 // support bundle in /bundle directory. This can subsequently be loaded into the simulator
+// This method submits the build request to a worker queue and waits for completion
 func (c *Client) CreateImage(instanceName string, bundlePath string, baseImage string) error {
-
-	imageName := fmt.Sprintf("%s:%s", simCliPrefix, instanceName)
-	contextTar, err := BuildContextTar(bundlePath, baseImage)
-	if err != nil {
-		return err
-	}
-
-	imageBuildResponse, err := c.APIClient.ImageBuild(c.ctx, bytes.NewReader(contextTar.Bytes()), types.ImageBuildOptions{
-		Tags: []string{imageName},
-		Labels: map[string]string{
-			bundleNameKey: instanceName,
-		},
-	})
-
-	if err != nil {
-		return err
-	}
-
-	return readResponse(imageBuildResponse.Body)
+	// Submit build request to the worker and wait for result
+	return c.buildWorker.SubmitBuildRequest(instanceName, bundlePath, baseImage)
 }
 
 // FindImage attempts to find image for a given instanceName by filtering on labels added

@@ -18,9 +18,10 @@ const (
 )
 
 type Client struct {
-	APIClient client.APIClient
-	Endpoint  docker.Endpoint
-	ctx       context.Context
+	APIClient   client.APIClient
+	Endpoint    docker.Endpoint
+	ctx         context.Context
+	buildWorker *ImageBuildWorker
 }
 
 // GetClient leverages dockerCli to handle interaction with the docker client
@@ -56,5 +57,17 @@ func NewClient(ctx context.Context) (*Client, error) {
 		Endpoint:  dockerCli.DockerEndpoint(),
 		ctx:       ctx,
 	}
+
+	// Initialize and start the build worker
+	c.buildWorker = NewImageBuildWorker(c)
+	c.buildWorker.Start()
+
 	return c, nil
+}
+
+// Close gracefully closes the client and shuts down the build worker
+func (c *Client) Close() {
+	if c.buildWorker != nil {
+		c.buildWorker.Shutdown()
+	}
 }

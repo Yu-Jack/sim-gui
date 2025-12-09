@@ -239,8 +239,14 @@ func (s *Server) handleCleanVersionImage(w http.ResponseWriter, r *http.Request)
 	}
 
 	// Use cleaner to clean and reset ready state
-	if err := s.cleaner.CleanVersion(name, versionID); err != nil {
+	if err := s.cleaner.CleanInstance(instanceName); err != nil {
 		http.Error(w, fmt.Sprintf("Failed to clean version: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	// Reset ready state after successful clean
+	if err := s.ResetVersionReadyState(name, versionID); err != nil {
+		http.Error(w, fmt.Sprintf("Failed to reset ready state: %v", err), http.StatusInternalServerError)
 		return
 	}
 
@@ -393,7 +399,7 @@ func (s *Server) handleDeleteVersion(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) markVersionReady(workspaceName, versionID string) {
-	if err := s.cleaner.MarkVersionReady(workspaceName, versionID); err != nil {
+	if err := s.MarkVersionReady(workspaceName, versionID); err != nil {
 		fmt.Printf("Failed to mark version ready: %v\n", err)
 	}
 }

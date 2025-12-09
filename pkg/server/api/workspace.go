@@ -9,7 +9,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Yu-Jack/sim-gui/pkg/core"
 	"github.com/Yu-Jack/sim-gui/pkg/server/model"
 	"github.com/Yu-Jack/sim-gui/pkg/server/utils"
 )
@@ -103,9 +102,29 @@ func (s *Server) handleGetWorkspace(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleCleanAllWorkspaceImages(w http.ResponseWriter, r *http.Request) {
 	name := r.PathValue("name")
 
-	// Use cleaner to clean all versions and reset ready states
-	results := s.cleaner.CleanAllVersionsInWorkspace(name)
-	errors := core.FormatCleanResults(results)
+	// Get workspace to iterate through versions
+	ws, err := s.store.GetWorkspace(name)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("Failed to get workspace: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	// Clean all versions and collect results
+	var results []CleanVersionResult
+	for _, version := range ws.Versions {
+		instanceName := fmt.Sprintf("%s-%s", name, version.ID)
+		err := s.cleaner.CleanInstance(instanceName)
+		if err == nil {
+			// Reset ready state after successful clean
+			err = s.ResetVersionReadyState(name, version.ID)
+		}
+		results = append(results, CleanVersionResult{
+			VersionID: version.ID,
+			Error:     err,
+		})
+	}
+
+	errors := FormatCleanResults(results)
 
 	if len(errors) > 0 {
 		http.Error(w, fmt.Sprintf("Some operations failed: %v", strings.Join(errors, "; ")), http.StatusInternalServerError)
@@ -116,9 +135,31 @@ func (s *Server) handleCleanAllWorkspaceImages(w http.ResponseWriter, r *http.Re
 }
 
 func (s *Server) handleCleanAllImages(w http.ResponseWriter, r *http.Request) {
-	// Use cleaner to clean all workspaces and reset ready states
-	results := s.cleaner.CleanAllWorkspaces()
-	errors := core.FormatCleanResults(results)
+	// Get all workspaces
+	workspaces, err := s.store.ListWorkspaces()
+	if err != nil {
+		http.Error(w, fmt.Sprintf("Failed to list workspaces: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	// Clean all versions across all workspaces
+	var results []CleanVersionResult
+	for _, ws := range workspaces {
+		for _, version := range ws.Versions {
+			instanceName := fmt.Sprintf("%s-%s", ws.Name, version.ID)
+			err := s.cleaner.CleanInstance(instanceName)
+			if err == nil {
+				// Reset ready state after successful clean
+				err = s.ResetVersionReadyState(ws.Name, version.ID)
+			}
+			results = append(results, CleanVersionResult{
+				VersionID: fmt.Sprintf("%s/%s", ws.Name, version.ID),
+				Error:     err,
+			})
+		}
+	}
+
+	errors := FormatCleanResults(results)
 
 	if len(errors) > 0 {
 		http.Error(w, fmt.Sprintf("Some operations failed: %v", strings.Join(errors, "; ")), http.StatusInternalServerError)

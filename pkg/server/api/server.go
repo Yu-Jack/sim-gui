@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"net/http"
 
-	"github.com/Yu-Jack/sim-gui/pkg/core"
 	"github.com/Yu-Jack/sim-gui/pkg/docker"
 	"github.com/Yu-Jack/sim-gui/pkg/server/store"
 )
@@ -14,7 +13,7 @@ type Server struct {
 	store   store.Storage
 	dataDir string
 	docker  *docker.Client
-	cleaner *core.Cleaner
+	cleaner *docker.Cleaner
 }
 
 func NewServer(store store.Storage, dataDir string) (*Server, error) {
@@ -32,7 +31,7 @@ func NewServer(store store.Storage, dataDir string) (*Server, error) {
 		fmt.Printf("Failed to pull support-bundle-kit image: %v\n", err)
 	}
 
-	cleaner := core.NewCleaner(cli, store)
+	cleaner := docker.NewCleaner(cli)
 
 	return &Server{
 		store:   store,

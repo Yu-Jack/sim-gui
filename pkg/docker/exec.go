@@ -5,11 +5,12 @@ import (
 	"fmt"
 
 	"github.com/docker/docker/api/types"
+	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/pkg/stdcopy"
 )
 
 func (c *Client) ExecContainer(containerName string, command []string, env []string) (string, string, error) {
-	execConfig := types.ExecConfig{
+	execConfig := container.ExecOptions{
 		Cmd:          command,
 		Env:          env,
 		AttachStdout: true,

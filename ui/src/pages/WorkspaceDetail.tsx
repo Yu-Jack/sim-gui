@@ -8,6 +8,8 @@ import { getWorkspaceDisplayName, getWorkspaceEditableName } from '../utils/work
 import { VersionList } from '../components/workspace/VersionList';
 import { ResourceHistory } from '../components/workspace/ResourceHistory';
 import NodeExplorer from '../components/workspace/NodeExplorer.tsx';
+import { useToast } from '../contexts/ToastContext';
+import { ConfirmDialog } from '../components/ConfirmDialog';
 
 type Tab = 'upload' | 'versions' | 'search' | 'explorer';
 
@@ -21,6 +23,19 @@ export const WorkspaceDetail: React.FC = () => {
   const [renameValue, setRenameValue] = useState('');
   const [showRenameModal, setShowRenameModal] = useState(false);
   const [isCleaning, setIsCleaning] = useState(false);
+  const { showSuccess, showError } = useToast();
+  const [confirmDialog, setConfirmDialog] = useState<{
+    isOpen: boolean;
+    title: string;
+    message: string;
+    onConfirm: () => void;
+    variant?: 'danger' | 'warning';
+  }>({
+    isOpen: false,
+    title: '',
+    message: '',
+    onConfirm: () => {},
+  });
 
   const loadWorkspace = useCallback(async () => {
     if (!name) return;
@@ -66,20 +81,27 @@ export const WorkspaceDetail: React.FC = () => {
 
   const handleCleanAll = async () => {
     if (!name) return;
-    if (!confirm('Are you sure you want to stop all simulators and clean all Docker images for this workspace? This will free up disk space but you\'ll need to restart simulators after.')) return;
-    
-    setIsCleaning(true);
-    try {
-      await cleanAllWorkspaceImages(name);
-      alert('All containers and images cleaned successfully!');
-      await loadWorkspace();
-      await loadStatuses();
-    } catch (error) {
-      console.error('Failed to clean all images', error);
-      alert('Failed to clean all images');
-    } finally {
-      setIsCleaning(false);
-    }
+    setConfirmDialog({
+      isOpen: true,
+      title: 'Clean All Images',
+      message: 'Are you sure you want to stop all simulators and clean all Docker images for this workspace? This will free up disk space but you\'ll need to restart simulators after.',
+      variant: 'warning',
+      onConfirm: async () => {
+        setConfirmDialog({ ...confirmDialog, isOpen: false });
+        setIsCleaning(true);
+        try {
+          await cleanAllWorkspaceImages(name);
+          showSuccess('All containers and images cleaned successfully!');
+          await loadWorkspace();
+          await loadStatuses();
+        } catch (error) {
+          console.error('Failed to clean all images', error);
+          showError('Failed to clean all images');
+        } finally {
+          setIsCleaning(false);
+        }
+      },
+    });
   };
 
   const handleRenameSubmit = async (e: React.FormEvent) => {
@@ -93,7 +115,7 @@ export const WorkspaceDetail: React.FC = () => {
       await loadWorkspace();
     } catch (err) {
         console.error(err);
-        alert('Failed to rename workspace');
+        showError('Failed to rename workspace');
     } finally {
         setIsRenaming(false);
     }
@@ -109,7 +131,16 @@ export const WorkspaceDetail: React.FC = () => {
   ];
 
   return (
-    <div className="space-y-6 h-[calc(100vh-100px)] flex flex-col">
+    <>
+      <ConfirmDialog
+        isOpen={confirmDialog.isOpen}
+        title={confirmDialog.title}
+        message={confirmDialog.message}
+        onConfirm={confirmDialog.onConfirm}
+        onCancel={() => setConfirmDialog({ ...confirmDialog, isOpen: false })}
+        variant={confirmDialog.variant}
+      />
+      <div className="space-y-6 h-[calc(100vh-100px)] flex flex-col">
       <div className="flex justify-between items-center">
         <div className="flex items-center gap-3">
             <h1 className="text-2xl font-semibold text-gray-900">
@@ -230,6 +261,7 @@ export const WorkspaceDetail: React.FC = () => {
         )}
       </div>
     </div>
+    </>
   );
 };
 

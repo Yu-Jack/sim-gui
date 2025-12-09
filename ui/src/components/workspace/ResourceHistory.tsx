@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Loader2, FileText } from 'lucide-react';
 import { diffLines } from 'diff';
 import { getResourceHistory, getNamespaces, getResourceTypes, getResources, type ResourceHistoryResult } from '../../api/client';
+import { useToast } from '../../contexts/ToastContext';
 
 const DiffView: React.FC<{ oldText: string; newText: string }> = ({ oldText, newText }) => {
   const diff = diffLines(oldText, newText);
@@ -160,6 +161,7 @@ export const ResourceHistory: React.FC<ResourceHistoryProps> = ({
   const [historyResults, setHistoryResults] = useState<ResourceHistoryResult[]>([]);
   const [isSearching, setIsSearching] = useState(false);
   const [selectedVersionId, setSelectedVersionId] = useState<string>('');
+  const { showError } = useToast();
 
   useEffect(() => {
     if (workspaceName) {
@@ -211,7 +213,7 @@ export const ResourceHistory: React.FC<ResourceHistoryProps> = ({
       }
     } catch (error) {
       console.error('Failed to search resource', error);
-      alert('Failed to search resource');
+      showError('Failed to search resource');
     } finally {
       setIsSearching(false);
     }

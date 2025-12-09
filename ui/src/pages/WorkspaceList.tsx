@@ -5,6 +5,8 @@ import { Plus, Folder, Pencil, Trash, Loader2, Trash2 } from 'lucide-react';
 import { getWorkspaces, createWorkspace, renameWorkspace, deleteWorkspace, cleanAllImages } from '../api/client';
 import type { Workspace } from '../types';
 import { getWorkspaceDisplayName, getWorkspaceEditableName } from '../utils/workspace';
+import { useToast } from '../contexts/ToastContext';
+import { ConfirmDialog } from '../components/ConfirmDialog';
 
 export const WorkspaceList: React.FC = () => {
   const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
@@ -18,6 +20,19 @@ export const WorkspaceList: React.FC = () => {
   const [isRenaming, setIsRenaming] = useState(false);
   const [deletingWorkspace, setDeletingWorkspace] = useState<string | null>(null);
   const [isCleaningAll, setIsCleaningAll] = useState(false);
+  const { showSuccess, showError } = useToast();
+  const [confirmDialog, setConfirmDialog] = useState<{
+    isOpen: boolean;
+    title: string;
+    message: string;
+    onConfirm: () => void;
+    variant?: 'danger' | 'warning';
+  }>({
+    isOpen: false,
+    title: '',
+    message: '',
+    onConfirm: () => {},
+  });
 
   const loadWorkspaces = useCallback(async () => {
     try {
@@ -71,43 +86,68 @@ export const WorkspaceList: React.FC = () => {
     } catch (err) {
         const error = err as AxiosError;
         console.error('Failed to rename workspace', error);
-        alert('Failed to rename workspace');
+        showError('Failed to rename workspace');
     } finally {
         setIsRenaming(false);
     }
   };
 
   const handleDelete = async (name: string) => {
-    if (!window.confirm('Are you sure you want to delete this workspace? This action cannot be undone.')) return;
-    setDeletingWorkspace(name);
-    try {
-      await deleteWorkspace(name);
-      await loadWorkspaces();
-    } catch (error) {
-      console.error('Failed to delete workspace', error);
-      alert('Failed to delete workspace');
-    } finally {
-      setDeletingWorkspace(null);
-    }
+    setConfirmDialog({
+      isOpen: true,
+      title: 'Delete Workspace',
+      message: 'Are you sure you want to delete this workspace? This action cannot be undone.',
+      variant: 'danger',
+      onConfirm: async () => {
+        setConfirmDialog({ ...confirmDialog, isOpen: false });
+        setDeletingWorkspace(name);
+        try {
+          await deleteWorkspace(name);
+          await loadWorkspaces();
+        } catch (error) {
+          console.error('Failed to delete workspace', error);
+          showError('Failed to delete workspace');
+        } finally {
+          setDeletingWorkspace(null);
+        }
+      },
+    });
   };
 
   const handleCleanAll = async () => {
-    if (!window.confirm('Are you sure you want to stop ALL simulators and clean ALL Docker images across all workspaces? This will free up significant disk space but you\'ll need to restart simulators after.')) return;
-    setIsCleaningAll(true);
-    try {
-      await cleanAllImages();
-      alert('All containers and images cleaned successfully!');
-      await loadWorkspaces();
-    } catch (error) {
-      console.error('Failed to clean all images', error);
-      alert('Failed to clean all images');
-    } finally {
-      setIsCleaningAll(false);
-    }
+    setConfirmDialog({
+      isOpen: true,
+      title: 'Clean All Images',
+      message: 'Are you sure you want to stop ALL simulators and clean ALL Docker images across all workspaces? This will free up significant disk space but you\'ll need to restart simulators after.',
+      variant: 'warning',
+      onConfirm: async () => {
+        setConfirmDialog({ ...confirmDialog, isOpen: false });
+        setIsCleaningAll(true);
+        try {
+          await cleanAllImages();
+          showSuccess('All containers and images cleaned successfully!');
+          await loadWorkspaces();
+        } catch (error) {
+          console.error('Failed to clean all images', error);
+          showError('Failed to clean all images');
+        } finally {
+          setIsCleaningAll(false);
+        }
+      },
+    });
   };
 
   return (
-    <div className="space-y-6">
+    <>
+      <ConfirmDialog
+        isOpen={confirmDialog.isOpen}
+        title={confirmDialog.title}
+        message={confirmDialog.message}
+        onConfirm={confirmDialog.onConfirm}
+        onCancel={() => setConfirmDialog({ ...confirmDialog, isOpen: false })}
+        variant={confirmDialog.variant}
+      />
+      <div className="space-y-6">
       <div className="flex justify-between items-center">
         <h1 className="text-2xl font-semibold text-gray-900">Workspaces</h1>
         <div className="flex gap-3">
@@ -271,5 +311,6 @@ export const WorkspaceList: React.FC = () => {
         ))}
       </div>
     </div>
+    </>
   );
 };

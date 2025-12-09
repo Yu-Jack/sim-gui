@@ -2,6 +2,8 @@ import React, { useState } from 'react';
 import { FileArchive, Play, Square, Download, Terminal, Trash2, Circle, Loader2, Eraser } from 'lucide-react';
 import { getKubeconfigUrl, startSimulator, stopSimulator, deleteVersion, cleanVersionImage } from '../../api/client';
 import type { Workspace } from '../../types';
+import { useToast } from '../../contexts/ToastContext';
+import { ConfirmDialog } from '../ConfirmDialog';
 
 interface VersionListProps {
   workspace: Workspace;
@@ -15,6 +17,19 @@ export const VersionList: React.FC<VersionListProps> = ({
   onRefresh,
 }) => {
   const [loading, setLoading] = useState<Record<string, string | null>>({}); // versionID -> action ('start', 'stop', 'delete')
+  const { showSuccess, showError, showInfo } = useToast();
+  const [confirmDialog, setConfirmDialog] = useState<{
+    isOpen: boolean;
+    title: string;
+    message: string;
+    onConfirm: () => void;
+    variant?: 'danger' | 'warning';
+  }>({
+    isOpen: false,
+    title: '',
+    message: '',
+    onConfirm: () => {},
+  });
 
   const handleStart = async (versionID: string) => {
     setLoading(prev => ({ ...prev, [versionID]: 'start' }));
@@ -23,7 +38,7 @@ export const VersionList: React.FC<VersionListProps> = ({
       onRefresh();
     } catch (error) {
       console.error('Failed to start simulator', error);
-      alert('Failed to start simulator');
+      showError('Failed to start simulator');
     } finally {
       setLoading(prev => ({ ...prev, [versionID]: null }));
     }
@@ -36,43 +51,68 @@ export const VersionList: React.FC<VersionListProps> = ({
       onRefresh();
     } catch (error) {
       console.error('Failed to stop simulator', error);
-      alert('Failed to stop simulator');
+      showError('Failed to stop simulator');
     } finally {
       setLoading(prev => ({ ...prev, [versionID]: null }));
     }
   };
 
   const handleDelete = async (versionID: string) => {
-    if (!confirm('Are you sure you want to delete this version? This will also remove any running containers.')) return;
-    setLoading(prev => ({ ...prev, [versionID]: 'delete' }));
-    try {
-      await deleteVersion(workspace.name, versionID);
-      onRefresh();
-    } catch (error) {
-      console.error('Failed to delete version', error);
-      alert('Failed to delete version');
-    } finally {
-      setLoading(prev => ({ ...prev, [versionID]: null }));
-    }
+    setConfirmDialog({
+      isOpen: true,
+      title: 'Delete Version',
+      message: 'Are you sure you want to delete this version? This will also remove any running containers.',
+      variant: 'danger',
+      onConfirm: async () => {
+        setConfirmDialog({ ...confirmDialog, isOpen: false });
+        setLoading(prev => ({ ...prev, [versionID]: 'delete' }));
+        try {
+          await deleteVersion(workspace.name, versionID);
+          onRefresh();
+        } catch (error) {
+          console.error('Failed to delete version', error);
+          showError('Failed to delete version');
+        } finally {
+          setLoading(prev => ({ ...prev, [versionID]: null }));
+        }
+      },
+    });
   };
 
   const handleCleanImage = async (versionID: string) => {
-    if (!confirm('Are you sure you want to clean the Docker image for this version? This will free up disk space.')) return;
-    setLoading(prev => ({ ...prev, [versionID]: 'clean' }));
-    try {
-      await cleanVersionImage(workspace.name, versionID);
-      alert('Docker image cleaned successfully!');
-      onRefresh();
-    } catch (error) {
-      console.error('Failed to clean image', error);
-      alert('Failed to clean image');
-    } finally {
-      setLoading(prev => ({ ...prev, [versionID]: null }));
-    }
+    setConfirmDialog({
+      isOpen: true,
+      title: 'Clean Docker Image',
+      message: 'Are you sure you want to clean the Docker image for this version? This will free up disk space.',
+      variant: 'warning',
+      onConfirm: async () => {
+        setConfirmDialog({ ...confirmDialog, isOpen: false });
+        setLoading(prev => ({ ...prev, [versionID]: 'clean' }));
+        try {
+          await cleanVersionImage(workspace.name, versionID);
+          showSuccess('Docker image cleaned successfully!');
+          onRefresh();
+        } catch (error) {
+          console.error('Failed to clean image', error);
+          showError('Failed to clean image');
+        } finally {
+          setLoading(prev => ({ ...prev, [versionID]: null }));
+        }
+      },
+    });
   };
 
   return (
-    <div className="bg-white shadow overflow-hidden sm:rounded-md">
+    <>
+      <ConfirmDialog
+        isOpen={confirmDialog.isOpen}
+        title={confirmDialog.title}
+        message={confirmDialog.message}
+        onConfirm={confirmDialog.onConfirm}
+        onCancel={() => setConfirmDialog({ ...confirmDialog, isOpen: false })}
+        variant={confirmDialog.variant}
+      />
+      <div className="bg-white shadow overflow-hidden sm:rounded-md">
       <ul className="divide-y divide-gray-200">
         {workspace.versions.map((version) => {
           const status = statuses[version.id] || { running: false, ready: false };
@@ -155,7 +195,7 @@ export const VersionList: React.FC<VersionListProps> = ({
                         const kubeconfigPath = `/tmp/sim-${workspace.name}-${version.id}.kubeconfig`;
                         const cmd = `curl -s -o ${kubeconfigPath} http://localhost:8080${getKubeconfigUrl(workspace.name, version.id)} && export KUBECONFIG=${kubeconfigPath} && k9s`;
                         navigator.clipboard.writeText(cmd);
-                        alert('Copied k9s command to clipboard!');
+                        showInfo('Copied k9s command to clipboard!');
                     }}
                     className={`inline-flex items-center px-3 py-1 border border-transparent text-xs font-medium rounded-md ${isRunning ? 'text-gray-700 bg-gray-100 hover:bg-gray-200' : 'text-gray-400 bg-gray-100 cursor-not-allowed'}`}
                     disabled={!isRunning || !!isLoading}
@@ -169,7 +209,7 @@ export const VersionList: React.FC<VersionListProps> = ({
                         const kubeconfigPath = `/tmp/sim-${workspace.name}-${version.id}.kubeconfig`;
                         const cmd = `curl -s -o ${kubeconfigPath} http://localhost:8080${getKubeconfigUrl(workspace.name, version.id)} && export KUBECONFIG=${kubeconfigPath}`;
                         navigator.clipboard.writeText(cmd);
-                        alert('Copied export command to clipboard!');
+                        showInfo('Copied export command to clipboard!');
                     }}
                     className={`inline-flex items-center px-3 py-1 border border-transparent text-xs font-medium rounded-md ${isRunning ? 'text-gray-700 bg-gray-100 hover:bg-gray-200' : 'text-gray-400 bg-gray-100 cursor-not-allowed'}`}
                     disabled={!isRunning || !!isLoading}
@@ -198,5 +238,6 @@ export const VersionList: React.FC<VersionListProps> = ({
         )}
       </ul>
     </div>
+    </>
   );
 };

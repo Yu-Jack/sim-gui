@@ -1,8 +1,8 @@
 import React, { useEffect, useState, useCallback, useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import { AxiosError } from 'axios';
-import { Plus, Folder, Pencil, Trash, Loader2, Trash2, Search, ArrowUpDown } from 'lucide-react';
-import { getWorkspaces, createWorkspace, renameWorkspace, deleteWorkspace, cleanAllImages } from '../api/client';
+import { Plus, Folder, Pencil, Trash, Loader2, Trash2, Search, ArrowUpDown, Circle } from 'lucide-react';
+import { getWorkspaces, createWorkspace, renameWorkspace, deleteWorkspace, cleanAllImages, getSimulatorStatus } from '../api/client';
 import type { Workspace } from '../types';
 import { getWorkspaceDisplayName, getWorkspaceEditableName } from '../utils/workspace';
 import { useToast } from '../contexts/ToastContext';
@@ -22,6 +22,7 @@ export const WorkspaceList: React.FC = () => {
   const [isCleaningAll, setIsCleaningAll] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
+  const [workspaceStatuses, setWorkspaceStatuses] = useState<Record<string, Record<string, { running: boolean; ready: boolean }>>>({});
   const { showSuccess, showError } = useToast();
   const [confirmDialog, setConfirmDialog] = useState<{
     isOpen: boolean;
@@ -46,9 +47,33 @@ export const WorkspaceList: React.FC = () => {
     }
   }, []);
 
+  const loadStatuses = useCallback(async () => {
+    const newStatuses: Record<string, Record<string, { running: boolean; ready: boolean }>> = {};
+    for (const ws of workspaces) {
+      newStatuses[ws.name] = {};
+      for (const version of ws.versions || []) {
+        try {
+          const status = await getSimulatorStatus(ws.name, version.id);
+          newStatuses[ws.name][version.id] = status;
+        } catch (error) {
+          console.error(`Failed to load status for ${ws.name}/${version.id}`, error);
+        }
+      }
+    }
+    setWorkspaceStatuses(newStatuses);
+  }, [workspaces]);
+
   useEffect(() => {
     loadWorkspaces();
   }, [loadWorkspaces]);
+
+  useEffect(() => {
+    if (workspaces.length > 0) {
+      loadStatuses();
+      const interval = setInterval(loadStatuses, 5000); // Poll every 5 seconds
+      return () => clearInterval(interval);
+    }
+  }, [workspaces, loadStatuses]);
 
   // Filter and sort workspaces
   const filteredAndSortedWorkspaces = useMemo(() => {
@@ -72,6 +97,21 @@ export const WorkspaceList: React.FC = () => {
     return sorted;
   }, [workspaces, searchQuery, sortOrder]);
 
+  // Calculate running simulators count for a workspace
+  const getRunningCount = useCallback((workspaceName: string) => {
+    const statuses = workspaceStatuses[workspaceName];
+    if (!statuses) return 0;
+    return Object.values(statuses).filter(s => s.running).length;
+  }, [workspaceStatuses]);
+
+  // Calculate total running simulators across all workspaces
+  const totalRunningCount = useMemo(() => {
+    let count = 0;
+    for (const workspaceName in workspaceStatuses) {
+      count += getRunningCount(workspaceName);
+    }
+    return count;
+  }, [workspaceStatuses, getRunningCount]);
 
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -127,6 +167,7 @@ export const WorkspaceList: React.FC = () => {
         setDeletingWorkspace(name);
         try {
           await deleteWorkspace(name);
+          showSuccess('Workspace deleted successfully');
           await loadWorkspaces();
         } catch (error) {
           console.error('Failed to delete workspace', error);
@@ -173,7 +214,15 @@ export const WorkspaceList: React.FC = () => {
       />
       <div className="space-y-6">
       <div className="flex justify-between items-center">
-        <h1 className="text-2xl font-semibold text-gray-900">Workspaces</h1>
+        <div className="flex items-center gap-3">
+          <h1 className="text-2xl font-semibold text-gray-900">Workspaces</h1>
+          {totalRunningCount > 0 && (
+            <span className="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-green-100 text-green-800">
+              <Circle className="h-3 w-3 fill-green-600 text-green-600 mr-1.5" />
+              {totalRunningCount} running
+            </span>
+          )}
+        </div>
         <div className="flex gap-3">
           <button
             onClick={handleCleanAll}
@@ -319,7 +368,9 @@ export const WorkspaceList: React.FC = () => {
             </p>
           </div>
         ) : (
-          filteredAndSortedWorkspaces.map((ws) => (
+          filteredAndSortedWorkspaces.map((ws) => {
+            const runningCount = getRunningCount(ws.name);
+            return (
           <div key={ws.name} className="relative group">
             <Link
               to={`/workspaces/${ws.name}`}
@@ -339,6 +390,12 @@ export const WorkspaceList: React.FC = () => {
                         <div className="text-2xl font-semibold text-gray-900">
                           {ws.versions?.length || 0} Versions
                         </div>
+                      </dd>
+                      <dd className="flex items-center mt-1">
+                        <Circle className={`h-3 w-3 mr-1 ${runningCount > 0 ? 'text-green-500 fill-green-500' : 'text-gray-400 fill-gray-400'}`} />
+                        <span className={`text-sm font-medium ${runningCount > 0 ? 'text-green-600' : 'text-gray-500'}`}>
+                          {runningCount} Running
+                        </span>
                       </dd>
                     </div>
                   </div>
@@ -383,7 +440,8 @@ export const WorkspaceList: React.FC = () => {
               </button>
             </div>
           </div>
-        ))
+            );
+          })
         )}
       </div>
     </div>

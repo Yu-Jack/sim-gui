@@ -68,6 +68,7 @@ export const VersionList: React.FC<VersionListProps> = ({
         setLoading(prev => ({ ...prev, [versionID]: 'delete' }));
         try {
           await deleteVersion(workspace.name, versionID);
+          showSuccess('Version deleted successfully');
           onRefresh();
         } catch (error) {
           console.error('Failed to delete version', error);

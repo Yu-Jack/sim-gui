@@ -15,7 +15,7 @@ export const Layout: React.FC = () => {
                   className="h-8"
                 />
                 <span className="text-gray-900 font-semibold text-lg border-l pl-4 border-gray-300">
-                  Support Bundle Disagnostic
+                  Support Bundle Diagnostic
                 </span>
               </Link>
             </div>

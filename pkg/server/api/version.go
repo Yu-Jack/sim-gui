@@ -36,8 +36,15 @@ func (s *Server) handleUploadVersion(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Create version ID
-	versionID := fmt.Sprintf("v%d", len(ws.Versions)+1)
+	// Create version ID - find max version number and increment
+	maxVersion := 0
+	for _, v := range ws.Versions {
+		var vNum int
+		if _, err := fmt.Sscanf(v.ID, "v%d", &vNum); err == nil && vNum > maxVersion {
+			maxVersion = vNum
+		}
+	}
+	versionID := fmt.Sprintf("v%d", maxVersion+1)
 	versionPath := filepath.Join(s.dataDir, "workspaces", name, versionID)
 
 	if err := os.MkdirAll(versionPath, 0755); err != nil {

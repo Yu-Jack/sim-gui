@@ -99,6 +99,34 @@ func mergeKubeConfig(existing, new *api.Config) *api.Config {
 	return existing
 }
 
+// MergeAllConfigs merges multiple kubeconfigs into a single config
+// Each config should already be configured with ConfigureKubeConfig
+func MergeAllConfigs(configs []*api.Config) *api.Config {
+	if len(configs) == 0 {
+		return &api.Config{}
+	}
+
+	merged := &api.Config{
+		Clusters:  make(map[string]*api.Cluster),
+		AuthInfos: make(map[string]*api.AuthInfo),
+		Contexts:  make(map[string]*api.Context),
+	}
+
+	for _, config := range configs {
+		merged = mergeKubeConfig(merged, config)
+	}
+
+	// Set the first context as the current context
+	if len(merged.Contexts) > 0 {
+		for name := range merged.Contexts {
+			merged.CurrentContext = name
+			break
+		}
+	}
+
+	return merged
+}
+
 // RemoveContext is called during instance deletion and will remove the context associated with instanceName from the kubeconfig file
 func RemoveContext(fileName, instanceName string) error {
 	existingContent, err := os.ReadFile(fileName)

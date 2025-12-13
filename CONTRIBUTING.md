@@ -93,6 +93,7 @@ go run main.go server --dev
 - `GET /api/workspaces/{name}` - Get workspace details
 - `DELETE /api/workspaces/{name}` - Delete a workspace
 - `PUT /api/workspaces/{name}` - Rename a workspace
+- `GET /api/workspaces/{name}/kubeconfig` - Export merged kubeconfig for all running versions
 - `POST /api/workspaces/{name}/clean-all` - Clean all workspace images
 - `POST /api/workspaces/{name}/resource-history` - Get resource history
 - `GET /api/workspaces/{name}/namespaces` - List namespaces

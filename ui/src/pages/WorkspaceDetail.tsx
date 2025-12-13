@@ -1,7 +1,7 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { useParams } from 'react-router-dom';
-import { Upload, List, Search, Pencil, Folder, Trash2, Loader2 } from 'lucide-react';
-import { getWorkspace, getSimulatorStatus, renameWorkspace, cleanAllWorkspaceImages } from '../api/client';
+import { Upload, List, Search, Pencil, Folder, Trash2, Loader2, Download, Copy, ChevronDown } from 'lucide-react';
+import { getWorkspace, getSimulatorStatus, renameWorkspace, cleanAllWorkspaceImages, getWorkspaceKubeconfigUrl } from '../api/client';
 import type { Workspace } from '../types';
 import { UploadArea } from '../components/workspace/UploadArea';
 import { getWorkspaceDisplayName, getWorkspaceEditableName } from '../utils/workspace';
@@ -22,7 +22,9 @@ export const WorkspaceDetail: React.FC = () => {
   const [isRenaming, setIsRenaming] = useState(false);
   const [renameValue, setRenameValue] = useState('');
   const [showRenameModal, setShowRenameModal] = useState(false);
+  const [showCopyMenu, setShowCopyMenu] = useState(false);
   const [isCleaning, setIsCleaning] = useState(false);
+  const copyMenuRef = useRef<HTMLDivElement>(null);
   const { showSuccess, showError } = useToast();
   const [confirmDialog, setConfirmDialog] = useState<{
     isOpen: boolean;
@@ -121,6 +123,33 @@ export const WorkspaceDetail: React.FC = () => {
     }
   };
 
+  const handleCopyK9sCommand = () => {
+    if (!name) return;
+    const command = `curl -s -o /tmp/sim-${name}.kubeconfig http://localhost:8080${getWorkspaceKubeconfigUrl(name)} && k9s --kubeconfig /tmp/sim-${name}.kubeconfig`;
+    navigator.clipboard.writeText(command);
+    showSuccess('Copied k9s command to clipboard!');
+    setShowCopyMenu(false);
+  };
+
+  const handleCopyExportCommand = () => {
+    if (!name) return;
+    const command = `curl -s -o /tmp/sim-${name}.kubeconfig http://localhost:8080${getWorkspaceKubeconfigUrl(name)} && export KUBECONFIG=/tmp/sim-${name}.kubeconfig`;
+    navigator.clipboard.writeText(command);
+    showSuccess('Copied export command to clipboard!');
+    setShowCopyMenu(false);
+  };
+
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (copyMenuRef.current && !copyMenuRef.current.contains(event.target as Node)) {
+        setShowCopyMenu(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
   if (!workspace || !name) return <div>Loading...</div>;
 
   const tabs: { id: Tab; label: string; icon: React.ElementType }[] = [
@@ -156,15 +185,60 @@ export const WorkspaceDetail: React.FC = () => {
                 <Pencil className="h-5 w-5" />
             </button>
         </div>
-        <button
-          onClick={handleCleanAll}
-          disabled={isCleaning}
-          className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-orange-600 hover:bg-orange-700 disabled:opacity-50 disabled:cursor-not-allowed"
-          title="Stop all simulators and clean all Docker images"
-        >
-          {isCleaning ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Trash2 className="h-4 w-4 mr-2" />}
-          {isCleaning ? 'Cleaning...' : 'Clean All Images'}
-        </button>
+        <div className="flex gap-3">
+          <div className="relative" ref={copyMenuRef}>
+            <button
+              onClick={() => setShowCopyMenu(!showCopyMenu)}
+              className="inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-green-700 bg-green-100 hover:bg-green-200"
+              title="Export Workspace kubeconfig"
+            >
+              <Download className="h-4 w-4 mr-2" />
+              Export Workspace Kubeconfig
+              <ChevronDown className="h-4 w-4 ml-2" />
+            </button>
+            {showCopyMenu && (
+              <div className="absolute right-0 mt-2 w-56 rounded-md shadow-lg bg-white ring-1 ring-black ring-opacity-5 z-50">
+                <div className="py-1" role="menu">
+                  <button
+                    onClick={handleCopyK9sCommand}
+                    className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 flex items-center"
+                    role="menuitem"
+                  >
+                    <Copy className="h-4 w-4 mr-2" />
+                    k9s Command
+                  </button>
+                  <button
+                    onClick={handleCopyExportCommand}
+                    className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 flex items-center"
+                    role="menuitem"
+                  >
+                    <Copy className="h-4 w-4 mr-2" />
+                    Export Command
+                  </button>
+                  <a
+                    href={getWorkspaceKubeconfigUrl(name)}
+                    download={`${name}-all.kubeconfig`}
+                    className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 flex items-center"
+                    role="menuitem"
+                    onClick={() => setShowCopyMenu(false)}
+                  >
+                    <Download className="h-4 w-4 mr-2" />
+                    Download Kubeconfig
+                  </a>
+                </div>
+              </div>
+            )}
+          </div>
+          <button
+            onClick={handleCleanAll}
+            disabled={isCleaning}
+            className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-orange-600 hover:bg-orange-700 disabled:opacity-50 disabled:cursor-not-allowed"
+            title="Stop all simulators and clean all Docker images"
+          >
+            {isCleaning ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Trash2 className="h-4 w-4 mr-2" />}
+            {isCleaning ? 'Cleaning...' : 'Clean All Images'}
+          </button>
+        </div>
       </div>
 
       {showRenameModal && (

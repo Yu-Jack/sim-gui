@@ -14,6 +14,7 @@ import (
 	"github.com/Yu-Jack/sim-gui/pkg/server/model"
 	"github.com/Yu-Jack/sim-gui/pkg/server/utils"
 	"k8s.io/client-go/tools/clientcmd"
+	"k8s.io/client-go/tools/clientcmd/api"
 )
 
 func (s *Server) handleUploadVersion(w http.ResponseWriter, r *http.Request) {
@@ -419,4 +420,70 @@ func (s *Server) monitorReadyState(workspaceName, versionID, instanceName string
 			fmt.Printf("Monitor ready state failed: %v\n", err)
 		}
 	}()
+}
+
+func (s *Server) handleExportWorkspaceKubeconfig(w http.ResponseWriter, r *http.Request) {
+	name := r.PathValue("name")
+
+	ws, err := s.store.GetWorkspace(name)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusNotFound)
+		return
+	}
+
+	if len(ws.Versions) == 0 {
+		http.Error(w, "No versions found in workspace", http.StatusNotFound)
+		return
+	}
+
+	var kubeconfigs []*api.Config
+
+	// Collect kubeconfigs from all running versions
+	for _, version := range ws.Versions {
+		instanceName := fmt.Sprintf("%s-%s", name, version.ID)
+
+		// Check if running
+		containers, err := s.docker.FindRunningContainer(instanceName)
+		if err != nil || len(containers) == 0 {
+			// Skip versions that are not running
+			continue
+		}
+
+		// Read kubeconfig
+		content, err := s.docker.ReadFile(instanceName, "/root/.sim/admin.kubeconfig")
+		if err != nil {
+			continue
+		}
+
+		// Update endpoint
+		endpoint, port, err := s.docker.QueryExposedMapping(instanceName)
+		if err != nil {
+			continue
+		}
+
+		config, err := kubeconfig.ConfigureKubeConfig(content, instanceName, endpoint, port)
+		if err != nil {
+			continue
+		}
+
+		kubeconfigs = append(kubeconfigs, config)
+	}
+
+	if len(kubeconfigs) == 0 {
+		http.Error(w, "No running versions found", http.StatusConflict)
+		return
+	}
+
+	// Merge all kubeconfigs
+	mergedConfig := kubeconfig.MergeAllConfigs(kubeconfigs)
+
+	data, err := clientcmd.Write(*mergedConfig)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/x-yaml")
+	w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=\"%s-all.kubeconfig\"", name))
+	w.Write(data)
 }

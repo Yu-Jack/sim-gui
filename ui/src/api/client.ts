@@ -60,6 +60,10 @@ export const getKubeconfigUrl = (workspaceName: string, versionID: string) => {
   return `/api/workspaces/${workspaceName}/versions/${versionID}/kubeconfig`;
 };
 
+export const getWorkspaceKubeconfigUrl = (workspaceName: string) => {
+  return `/api/workspaces/${workspaceName}/kubeconfig`;
+};
+
 export const deleteVersion = async (workspaceName: string, versionID: string) => {
   await client.delete(`/workspaces/${workspaceName}/versions/${versionID}`);
 };

@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { FileArchive, Play, Square, Download, Terminal, Trash2, Circle, Loader2, Eraser } from 'lucide-react';
+import React, { useState, useRef, useEffect } from 'react';
+import { FileArchive, Play, Square, Download, Trash2, Circle, Loader2, Eraser, ChevronDown, Copy } from 'lucide-react';
 import { getKubeconfigUrl, startSimulator, stopSimulator, deleteVersion, cleanVersionImage } from '../../api/client';
 import type { Workspace } from '../../types';
 import { useToast } from '../../contexts/ToastContext';
@@ -17,6 +17,8 @@ export const VersionList: React.FC<VersionListProps> = ({
   onRefresh,
 }) => {
   const [loading, setLoading] = useState<Record<string, string | null>>({}); // versionID -> action ('start', 'stop', 'delete')
+  const [openCopyMenu, setOpenCopyMenu] = useState<string | null>(null); // versionID of open menu
+  const copyMenuRefs = useRef<Record<string, HTMLDivElement | null>>({});
   const { showSuccess, showError, showInfo } = useToast();
   const [confirmDialog, setConfirmDialog] = useState<{
     isOpen: boolean;
@@ -103,6 +105,33 @@ export const VersionList: React.FC<VersionListProps> = ({
     });
   };
 
+  const handleCopyK9sCommand = (versionID: string) => {
+    const kubeconfigPath = `/tmp/sim-${workspace.name}-${versionID}.kubeconfig`;
+    const cmd = `curl -s -o ${kubeconfigPath} http://localhost:8080${getKubeconfigUrl(workspace.name, versionID)} && k9s --kubeconfig ${kubeconfigPath}`;
+    navigator.clipboard.writeText(cmd);
+    showSuccess('Copied k9s command to clipboard!');
+    setOpenCopyMenu(null);
+  };
+
+  const handleCopyExportCommand = (versionID: string) => {
+    const kubeconfigPath = `/tmp/sim-${workspace.name}-${versionID}.kubeconfig`;
+    const cmd = `curl -s -o ${kubeconfigPath} http://localhost:8080${getKubeconfigUrl(workspace.name, versionID)} && export KUBECONFIG=${kubeconfigPath}`;
+    navigator.clipboard.writeText(cmd);
+    showSuccess('Copied export command to clipboard!');
+    setOpenCopyMenu(null);
+  };
+
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (openCopyMenu && copyMenuRefs.current[openCopyMenu] && !copyMenuRefs.current[openCopyMenu]?.contains(event.target as Node)) {
+        setOpenCopyMenu(null);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [openCopyMenu]);
+
   return (
     <>
       <ConfirmDialog
@@ -113,7 +142,7 @@ export const VersionList: React.FC<VersionListProps> = ({
         onCancel={() => setConfirmDialog({ ...confirmDialog, isOpen: false })}
         variant={confirmDialog.variant}
       />
-      <div className="bg-white shadow overflow-hidden sm:rounded-md">
+      <div className="bg-white shadow sm:rounded-md">
       <ul className="divide-y divide-gray-200">
         {workspace.versions.map((version) => {
           const status = statuses[version.id] || { running: false, ready: false };
@@ -181,43 +210,49 @@ export const VersionList: React.FC<VersionListProps> = ({
                       Start Simulator
                     </button>
                   )}
-                  <a
-                    href={getKubeconfigUrl(workspace.name, version.id)}
-                    className={`inline-flex items-center px-3 py-1 border border-transparent text-xs font-medium rounded-md ${isRunning ? 'text-green-700 bg-green-100 hover:bg-green-200' : 'text-gray-400 bg-gray-100 cursor-not-allowed'}`}
-                    download={isRunning ? "kubeconfig" : undefined}
-                    onClick={(e) => (!isRunning || !!isLoading) && e.preventDefault()}
-                  >
-                    <Download className="h-4 w-4 mr-1" />
-                    Kubeconfig
-                  </a>
-                  <button
-                    onClick={() => {
-                        if (!isRunning) return;
-                        const kubeconfigPath = `/tmp/sim-${workspace.name}-${version.id}.kubeconfig`;
-                        const cmd = `curl -s -o ${kubeconfigPath} http://localhost:8080${getKubeconfigUrl(workspace.name, version.id)} && export KUBECONFIG=${kubeconfigPath} && k9s`;
-                        navigator.clipboard.writeText(cmd);
-                        showInfo('Copied k9s command to clipboard!');
-                    }}
-                    className={`inline-flex items-center px-3 py-1 border border-transparent text-xs font-medium rounded-md ${isRunning ? 'text-gray-700 bg-gray-100 hover:bg-gray-200' : 'text-gray-400 bg-gray-100 cursor-not-allowed'}`}
-                    disabled={!isRunning || !!isLoading}
-                  >
-                    <Terminal className="h-4 w-4 mr-1" />
-                    Copy k9s Command
-                  </button>
-                  <button
-                    onClick={() => {
-                        if (!isRunning) return;
-                        const kubeconfigPath = `/tmp/sim-${workspace.name}-${version.id}.kubeconfig`;
-                        const cmd = `curl -s -o ${kubeconfigPath} http://localhost:8080${getKubeconfigUrl(workspace.name, version.id)} && export KUBECONFIG=${kubeconfigPath}`;
-                        navigator.clipboard.writeText(cmd);
-                        showInfo('Copied export command to clipboard!');
-                    }}
-                    className={`inline-flex items-center px-3 py-1 border border-transparent text-xs font-medium rounded-md ${isRunning ? 'text-gray-700 bg-gray-100 hover:bg-gray-200' : 'text-gray-400 bg-gray-100 cursor-not-allowed'}`}
-                    disabled={!isRunning || !!isLoading}
-                  >
-                    <Terminal className="h-4 w-4 mr-1" />
-                    Copy Export Command
-                  </button>
+                  <div className="relative" ref={(el) => (copyMenuRefs.current[version.id] = el)}>
+                    <button
+                      onClick={() => setOpenCopyMenu(openCopyMenu === version.id ? null : version.id)}
+                      disabled={!isRunning || !!isLoading}
+                      className={`inline-flex items-center px-3 py-1 border border-transparent text-xs font-medium rounded-md ${isRunning ? 'text-green-700 bg-green-100 hover:bg-green-200' : 'text-gray-400 bg-gray-100 cursor-not-allowed'}`}
+                    >
+                      <Download className="h-4 w-4 mr-1" />
+                      Export Kubeconfig
+                      <ChevronDown className="h-3 w-3 ml-1" />
+                    </button>
+                    {openCopyMenu === version.id && isRunning && (
+                      <div className="absolute left-0 mt-2 w-52 rounded-md shadow-lg bg-white ring-1 ring-black ring-opacity-5 z-50">
+                        <div className="py-1" role="menu">
+                          <button
+                            onClick={() => handleCopyK9sCommand(version.id)}
+                            className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 flex items-center"
+                            role="menuitem"
+                          >
+                            <Copy className="h-4 w-4 mr-2" />
+                            k9s Command
+                          </button>
+                          <button
+                            onClick={() => handleCopyExportCommand(version.id)}
+                            className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 flex items-center"
+                            role="menuitem"
+                          >
+                            <Copy className="h-4 w-4 mr-2" />
+                            Export Command
+                          </button>
+                          <a
+                            href={getKubeconfigUrl(workspace.name, version.id)}
+                            download="kubeconfig"
+                            className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 flex items-center"
+                            role="menuitem"
+                            onClick={() => setOpenCopyMenu(null)}
+                          >
+                            <Download className="h-4 w-4 mr-2" />
+                            Download Kubeconfig
+                          </a>
+                        </div>
+                      </div>
+                    )}
+                  </div>
                   <button
                     onClick={() => handleCleanImage(version.id)}
                     className={`inline-flex items-center px-3 py-1 border border-transparent text-xs font-medium rounded-md ${!isRunning ? 'text-orange-700 bg-orange-100 hover:bg-orange-200' : 'text-gray-400 bg-gray-100 cursor-not-allowed'}`}

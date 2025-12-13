@@ -4,11 +4,25 @@ A web-based UI for managing and exploring Harvester support bundles. This applic
 
 ## Features
 
-- Upload and manage multiple support bundle workspaces
-- Browse support bundle structure (logs, yamls, nodes, etc.)
-- View resource history and changes
-- Interactive file explorer
-- RESTful API backend
+### Workspace Management
+- **Workspaces**: Create dedicated debugging environments for each user/customer
+- **Versions**: Track multiple support bundles from the same customer over time
+- **Upload Bundle**: Support both single and multiple split support bundle zip files
+
+### Analysis & Debugging
+- **Resource Search**: Compare resources across different support bundle versions with intelligent input prompts
+- **Resource History**: View and track changes between support bundle versions
+- **Interactive Node Explorer**: Built-in online VS Code that automatically extracts all support bundle files - no local extraction needed
+
+### Utilities
+- **Kubeconfig Export**: Multiple ways to export kubeconfig for easy integration with kubectl or k9s
+- **Image Cleanup**: Clean Docker images for all workspaces or specific workspace while preserving support bundle data
+- **Auto Update Notifications**: Automatically checks for new updates every hour and notifies when updates are available
+
+### Technical Features
+- RESTful API backend with embedded UI
+- Docker-based simulator environment
+- Persistent workspace and version storage
 
 ## Installation
 

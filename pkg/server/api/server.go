@@ -7,6 +7,7 @@ import (
 
 	"github.com/Yu-Jack/sim-gui/pkg/docker"
 	"github.com/Yu-Jack/sim-gui/pkg/server/store"
+	"github.com/Yu-Jack/sim-gui/pkg/updater"
 )
 
 type Server struct {
@@ -14,9 +15,10 @@ type Server struct {
 	dataDir string
 	docker  *docker.Client
 	cleaner *docker.Cleaner
+	updater *updater.Updater
 }
 
-func NewServer(store store.Storage, dataDir string) (*Server, error) {
+func NewServer(store store.Storage, dataDir string, upd *updater.Updater) (*Server, error) {
 	cli, err := docker.NewClient(context.Background())
 	if err != nil {
 		return nil, err
@@ -38,6 +40,7 @@ func NewServer(store store.Storage, dataDir string) (*Server, error) {
 		dataDir: dataDir,
 		docker:  cli,
 		cleaner: cleaner,
+		updater: upd,
 	}, nil
 }
 
@@ -64,4 +67,7 @@ func (s *Server) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/workspaces/{name}/versions/{versionID}/clean-image", s.handleCleanVersionImage)
 
 	mux.HandleFunc("POST /api/workspaces/{name}/versions/{versionID}/code-server", s.handleStartCodeServer)
+
+	// Update check endpoint
+	mux.HandleFunc("GET /api/update-status", s.handleGetUpdateStatus)
 }

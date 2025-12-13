@@ -1,5 +1,5 @@
 import axios from 'axios';
-import type { Workspace } from '../types';
+import type { Workspace, UpdateStatus } from '../types';
 
 const client = axios.create({
   baseURL: 'http://localhost:8080/api',
@@ -111,5 +111,10 @@ export const getResources = async (workspaceName: string, namespace: string, res
 
 export const startCodeServer = async (workspaceName: string, versionID: string) => {
   const response = await client.post<{ url: string }>(`/workspaces/${workspaceName}/versions/${versionID}/code-server`);
+  return response.data;
+};
+
+export const getUpdateStatus = async () => {
+  const response = await client.get<UpdateStatus>('/update-status');
   return response.data;
 };

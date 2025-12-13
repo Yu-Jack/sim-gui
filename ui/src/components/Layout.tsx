@@ -1,5 +1,6 @@
 import React from 'react';
 import { Link, Outlet } from 'react-router-dom';
+import { UpdateNotification } from './UpdateNotification';
 
 export const Layout: React.FC = () => {
   return (
@@ -22,6 +23,7 @@ export const Layout: React.FC = () => {
           </div>
         </div>
       </header>
+      <UpdateNotification />
       <main className="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
         <Outlet />
       </main>

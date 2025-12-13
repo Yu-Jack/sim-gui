@@ -12,3 +12,11 @@ export interface Workspace {
   createdAt: string;
   versions: Version[];
 }
+
+export interface UpdateStatus {
+  updateAvailable: boolean;
+  currentCommit: string;
+  latestCommit: string;
+  lastChecked: string;
+  message: string;
+}

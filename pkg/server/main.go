@@ -7,9 +7,11 @@ import (
 	"net/http"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/Yu-Jack/sim-gui/pkg/server/api"
 	jsonstore "github.com/Yu-Jack/sim-gui/pkg/server/store/json"
+	"github.com/Yu-Jack/sim-gui/pkg/updater"
 )
 
 //go:embed all:static
@@ -22,7 +24,12 @@ func Run(addr string, dataDir string, dev bool) error {
 		return err
 	}
 
-	srv, err := api.NewServer(store, dataDir)
+	// Initialize update checker with 1 hour interval
+	upd := updater.NewUpdater("Yu-Jack", "sim-gui", "main", 1*time.Hour)
+	upd.Start()
+	log.Println("Update checker started (checks every 1 hour)")
+
+	srv, err := api.NewServer(store, dataDir, upd)
 	if err != nil {
 		return err
 	}

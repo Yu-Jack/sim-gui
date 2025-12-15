@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { useParams } from 'react-router-dom';
-import { Upload, List, Search, Pencil, Folder, Trash2, Loader2, Download, Copy, ChevronDown } from 'lucide-react';
+import { Upload, List, Search, Pencil, Folder, Trash2, Loader2, Download, Copy, ChevronDown, GitBranch } from 'lucide-react';
 import { getWorkspace, getSimulatorStatus, renameWorkspace, cleanAllWorkspaceImages, getWorkspaceKubeconfigUrl } from '../api/client';
 import type { Workspace } from '../types';
 import { UploadArea } from '../components/workspace/UploadArea';
@@ -8,10 +8,11 @@ import { getWorkspaceDisplayName, getWorkspaceEditableName } from '../utils/work
 import { VersionList } from '../components/workspace/VersionList';
 import { ResourceHistory } from '../components/workspace/ResourceHistory';
 import NodeExplorer from '../components/workspace/NodeExplorer.tsx';
+import { LiveMigrationCheck } from '../components/workspace/LiveMigrationCheck';
 import { useToast } from '../contexts/ToastContext';
 import { ConfirmDialog } from '../components/ConfirmDialog';
 
-type Tab = 'upload' | 'versions' | 'search' | 'explorer';
+type Tab = 'upload' | 'versions' | 'search' | 'explorer' | 'migration';
 
 export const WorkspaceDetail: React.FC = () => {
   const { name } = useParams<{ name: string }>();
@@ -157,6 +158,7 @@ export const WorkspaceDetail: React.FC = () => {
     { id: 'versions', label: 'Versions', icon: List },
     { id: 'search', label: 'Resource Search', icon: Search },
     { id: 'explorer', label: 'Node Explorer', icon: Folder },
+    { id: 'migration', label: 'Live Migration Check', icon: GitBranch },
   ];
 
   return (
@@ -332,6 +334,10 @@ export const WorkspaceDetail: React.FC = () => {
           <div className="h-[calc(100vh-200px)]">
             <NodeExplorer workspaceName={name} versions={workspace.versions} />
           </div>
+      )}
+
+        {activeTab === 'migration' && (
+          <LiveMigrationCheck workspaceName={name} versions={workspace.versions} />
         )}
       </div>
     </div>

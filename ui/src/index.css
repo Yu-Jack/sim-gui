@@ -1,5 +1,10 @@
 @import "tailwindcss";
 
+html, body, #root {
+  height: 100%;
+  background-color: #f9fafb;
+}
+
 @keyframes slide-in-right {
   from {
     transform: translateX(100%);

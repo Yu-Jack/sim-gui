@@ -54,6 +54,17 @@ This project follows strict separation of concerns between the Docker layer and 
    - Workspace/Version utilities → `pkg/server/api/version_helper.go`
    - Types like `CleanVersionResult` belong in server layer, not Docker layer
 
+### UI Guidelines
+
+#### Prompt and Selection UI
+- **Standard**: All prompt inputs (e.g., Namespace, Resource Name) and selection menus MUST follow the UI pattern established in `ResourceHistory.tsx`.
+- **Implementation Details**:
+  - Use a custom dropdown implementation with `ul` and `li` elements.
+  - Control visibility using `onFocus` and `onBlur` events on the input field.
+  - Do NOT use the native `<datalist>` element.
+  - Provide autocomplete suggestions that filter based on user input.
+  - Ensure consistent styling (Tailwind classes) for the dropdown menu (absolute positioning, z-index, shadow, etc.).
+
 ### When Adding New Features
 
 #### If adding Docker functionality:

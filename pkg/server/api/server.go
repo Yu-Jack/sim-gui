@@ -57,6 +57,7 @@ func (s *Server) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/workspaces/{name}/namespaces", s.handleGetNamespaces)
 	mux.HandleFunc("GET /api/workspaces/{name}/resource-types", s.handleGetResourceTypes)
 	mux.HandleFunc("GET /api/workspaces/{name}/resources", s.handleGetResources)
+	mux.HandleFunc("POST /api/workspaces/{name}/live-migration-check", s.handleCheckLiveMigration)
 
 	mux.HandleFunc("POST /api/workspaces/{name}/versions", s.handleUploadVersion)
 	mux.HandleFunc("POST /api/workspaces/{name}/versions/{versionID}/start", s.handleStartSimulator)

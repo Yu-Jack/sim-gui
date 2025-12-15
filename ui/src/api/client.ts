@@ -92,8 +92,10 @@ export const getResourceHistory = async (workspaceName: string, resource: string
   return response.data;
 };
 
-export const getNamespaces = async (workspaceName: string) => {
-  const response = await client.get<string[]>(`/workspaces/${workspaceName}/namespaces`);
+export const getNamespaces = async (workspaceName: string, versionID?: string) => {
+  const response = await client.get<string[]>(`/workspaces/${workspaceName}/namespaces`, {
+    params: { version: versionID }
+  });
   return response.data;
 };
 
@@ -102,9 +104,9 @@ export const getResourceTypes = async (workspaceName: string) => {
   return response.data;
 };
 
-export const getResources = async (workspaceName: string, namespace: string, resourceType: string, keyword: string) => {
+export const getResources = async (workspaceName: string, namespace: string, resourceType: string, keyword: string, versionID?: string) => {
   const response = await client.get<string[]>(`/workspaces/${workspaceName}/resources`, {
-    params: { namespace, resourceType, keyword }
+    params: { namespace, resourceType, keyword, version: versionID }
   });
   return response.data;
 };
@@ -116,5 +118,34 @@ export const startCodeServer = async (workspaceName: string, versionID: string) 
 
 export const getUpdateStatus = async () => {
   const response = await client.get<UpdateStatus>('/update-status');
+  return response.data;
+};
+
+export interface NodeCompatibilityResult {
+  nodeName: string;
+  matches: boolean;
+  missingLabels: Array<{ key: string; value: string }>;
+}
+
+export interface NodeToNodeCompatibility {
+  sourceNode: string;
+  targetNode: string;
+  missingLabels: Array<{ key: string; value: string }>;
+}
+
+export interface LiveMigrationCheckResult {
+  podName: string;
+  nodeSelector?: Record<string, string>;
+  nodeResults: NodeCompatibilityResult[];
+  nodeToNodeCompatibilities?: NodeToNodeCompatibility[];
+  error?: string;
+}
+
+export const checkLiveMigration = async (workspaceName: string, versionID: string, namespace: string, podName: string) => {
+  const response = await client.post<LiveMigrationCheckResult>(`/workspaces/${workspaceName}/live-migration-check`, { 
+    versionID,
+    namespace, 
+    podName 
+  });
   return response.data;
 };

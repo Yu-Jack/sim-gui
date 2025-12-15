@@ -254,16 +254,23 @@ func (s *Server) handleGetResourceHistory(w http.ResponseWriter, r *http.Request
 
 func (s *Server) handleGetNamespaces(w http.ResponseWriter, r *http.Request) {
 	name := r.PathValue("name")
+	versionID := r.URL.Query().Get("version")
 	ws, err := s.store.GetWorkspace(name)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusNotFound)
 		return
 	}
 
-	instanceName, err := utils.FindLatestRunningInstance(name, ws, s.docker)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusNotFound)
-		return
+	var instanceName string
+	if versionID != "" {
+		instanceName = fmt.Sprintf("%s-%s", name, versionID)
+	} else {
+		var err error
+		instanceName, err = utils.FindLatestRunningInstance(name, ws, s.docker)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusNotFound)
+			return
+		}
 	}
 
 	stdout, _, err := utils.ExecKubectl(s.docker, instanceName, "get", "namespaces", "-o", "jsonpath={.items[*].metadata.name}")
@@ -307,6 +314,7 @@ func (s *Server) handleGetResources(w http.ResponseWriter, r *http.Request) {
 	namespace := r.URL.Query().Get("namespace")
 	resourceType := r.URL.Query().Get("resourceType")
 	keyword := r.URL.Query().Get("keyword")
+	versionID := r.URL.Query().Get("version")
 
 	if namespace == "" || resourceType == "" {
 		http.Error(w, "namespace and resourceType are required", http.StatusBadRequest)
@@ -322,6 +330,9 @@ func (s *Server) handleGetResources(w http.ResponseWriter, r *http.Request) {
 	resourceMap := make(map[string]bool)
 
 	for _, v := range ws.Versions {
+		if versionID != "" && v.ID != versionID {
+			continue
+		}
 		instanceName := fmt.Sprintf("%s-%s", name, v.ID)
 		containers, err := s.docker.FindRunningContainer(instanceName)
 		if err != nil || len(containers) == 0 {
@@ -341,7 +352,7 @@ func (s *Server) handleGetResources(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	var filtered []string
+	filtered := make([]string, 0)
 	for res := range resourceMap {
 		if keyword == "" || strings.Contains(res, keyword) {
 			filtered = append(filtered, res)

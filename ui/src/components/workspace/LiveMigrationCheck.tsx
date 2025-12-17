@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Loader2, CheckCircle2, XCircle, AlertCircle } from 'lucide-react';
-import { checkLiveMigration, getNamespaces, getResources, type LiveMigrationCheckResult } from '../../api/client';
+import { checkLiveMigration, getNamespaces, getResources, getVirtualMachinePods, type LiveMigrationCheckResult, type PodInfo, type MigrationInfo } from '../../api/client';
 import { useToast } from '../../contexts/ToastContext';
 import type { Version } from '../../types';
 
@@ -12,15 +12,19 @@ interface Props {
 export const LiveMigrationCheck: React.FC<Props> = ({ workspaceName, versions }) => {
   const [selectedVersion, setSelectedVersion] = useState<string>('');
   const [namespace, setNamespace] = useState('');
-  const [podName, setPodName] = useState('');
+  const [vmName, setVmName] = useState('');
   const [loading, setLoading] = useState(false);
+  const [vmPods, setVmPods] = useState<PodInfo[]>([]);
+  const [vmMigrations, setVmMigrations] = useState<MigrationInfo[]>([]);
+  const [selectedPod, setSelectedPod] = useState<string | null>(null);
+  const [selectedMigrationYaml, setSelectedMigrationYaml] = useState<string | null>(null);
   const [result, setResult] = useState<LiveMigrationCheckResult | null>(null);
   const [availableNamespaces, setAvailableNamespaces] = useState<string[]>([]);
   const [loadingNamespaces, setLoadingNamespaces] = useState(false);
-  const [availablePods, setAvailablePods] = useState<string[]>([]);
-  const [loadingPods, setLoadingPods] = useState(false);
+  const [availableVMs, setAvailableVMs] = useState<string[]>([]);
+  const [loadingVMs, setLoadingVMs] = useState(false);
   const [showNamespaceSuggestions, setShowNamespaceSuggestions] = useState(false);
-  const [showPodNameSuggestions, setShowPodNameSuggestions] = useState(false);
+  const [showVMSuggestions, setShowVMSuggestions] = useState(false);
   const { showError } = useToast();
 
   // Set default version to the latest one
@@ -51,34 +55,62 @@ export const LiveMigrationCheck: React.FC<Props> = ({ workspaceName, versions })
     }
   }, [selectedVersion]);
 
-  const loadPods = async () => {
+  const loadVMs = async () => {
     if (!selectedVersion || !namespace) return;
-    setLoadingPods(true);
+    setLoadingVMs(true);
     try {
-        const pods = await getResources(workspaceName, namespace, 'pods', '', selectedVersion);
-        setAvailablePods(pods || []);
+        const vms = await getResources(workspaceName, namespace, 'virtualmachines', '', selectedVersion);
+        setAvailableVMs(vms || []);
     } catch (error) {
-        console.error('Failed to load pods', error);
-        setAvailablePods([]);
+        console.error('Failed to load VMs', error);
+        setAvailableVMs([]);
     } finally {
-        setLoadingPods(false);
+        setLoadingVMs(false);
     }
   };
 
   useEffect(() => {
       if (namespace) {
-          loadPods();
+          loadVMs();
       } else {
-          setAvailablePods([]);
+          setAvailableVMs([]);
       }
   }, [namespace, selectedVersion]);
 
 
-  const handleCheck = async (e: React.FormEvent) => {
+  const handleSearch = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!selectedVersion || !namespace || !podName) return;
+    if (!selectedVersion || !namespace || !vmName) return;
 
     setLoading(true);
+    setVmPods([]);
+    setVmMigrations([]);
+    setSelectedPod(null);
+    setSelectedMigrationYaml(null);
+    setResult(null);
+    try {
+      const data = await getVirtualMachinePods(workspaceName, selectedVersion, namespace, vmName);
+      if (data.error) {
+        showError(data.error);
+      } else {
+        setVmPods(data.pods);
+        setVmMigrations(data.migrations || []);
+      }
+    } catch (error) {
+      console.error('Failed to get VM pods', error);
+      const errorMessage = (error as { response?: { data?: { error?: string } } })?.response?.data?.error || 'Failed to get VirtualMachine pods';
+      showError(errorMessage);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handlePodCheck = async (podName: string) => {
+    if (!selectedVersion || !namespace) return;
+
+    setSelectedPod(podName);
+    setSelectedMigrationYaml(null);
+    setResult(null);
     try {
       const data = await checkLiveMigration(workspaceName, selectedVersion, namespace, podName);
       setResult(data);
@@ -87,9 +119,27 @@ export const LiveMigrationCheck: React.FC<Props> = ({ workspaceName, versions })
       const errorMessage = (error as { response?: { data?: { error?: string } } })?.response?.data?.error || 'Failed to check live migration';
       showError(errorMessage);
       setResult(null);
-    } finally {
-      setLoading(false);
     }
+  };
+
+  // Merge pods and migrations by creation time
+  const getMergedTimeline = () => {
+    type TimelineItem = 
+      | { type: 'pod'; data: PodInfo }
+      | { type: 'migration'; data: MigrationInfo };
+
+    const items: TimelineItem[] = [
+      ...vmPods.map(pod => ({ type: 'pod' as const, data: pod })),
+      ...vmMigrations.map(migration => ({ type: 'migration' as const, data: migration }))
+    ];
+
+    items.sort((a, b) => {
+      const timeA = new Date(a.data.creationTime).getTime();
+      const timeB = new Date(b.data.creationTime).getTime();
+      return timeB - timeA; // newest first
+    });
+
+    return items;
   };
 
   return (
@@ -97,7 +147,7 @@ export const LiveMigrationCheck: React.FC<Props> = ({ workspaceName, versions })
       <div className="bg-white shadow rounded-lg p-6">
         <h3 className="text-lg font-medium text-gray-900 mb-4">Live Migration Check</h3>
         
-        <form onSubmit={handleCheck} className="space-y-4">
+        <form onSubmit={handleSearch} className="space-y-4">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
               Version
@@ -160,38 +210,38 @@ export const LiveMigrationCheck: React.FC<Props> = ({ workspaceName, versions })
 
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
-                Pod Name
+                VirtualMachine Name
               </label>
               <div className="relative">
                 <input
                     type="text"
-                    value={podName}
-                    onChange={(e) => setPodName(e.target.value)}
-                    onFocus={() => setShowPodNameSuggestions(true)}
-                    onBlur={() => setTimeout(() => setShowPodNameSuggestions(false), 200)}
-                    placeholder="Select or enter pod name"
+                    value={vmName}
+                    onChange={(e) => setVmName(e.target.value)}
+                    onFocus={() => setShowVMSuggestions(true)}
+                    onBlur={() => setTimeout(() => setShowVMSuggestions(false), 200)}
+                    placeholder="Select or enter VM name"
                     className="w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm border p-2"
                 />
-                 {loadingPods && (
+                 {loadingVMs && (
                     <div className="absolute right-2 top-2.5">
                         <Loader2 className="h-4 w-4 animate-spin text-gray-400" />
                     </div>
                 )}
-                {showPodNameSuggestions && availablePods && availablePods.length > 0 && (
+                {showVMSuggestions && availableVMs && availableVMs.length > 0 && (
                   <ul className="absolute z-10 mt-1 w-full bg-white shadow-lg max-h-60 rounded-md py-1 ring-1 ring-black ring-opacity-5 overflow-auto focus:outline-none text-sm">
-                    {availablePods
-                      .filter(pod => pod.toLowerCase().includes(podName.toLowerCase()))
-                      .map(pod => (
+                    {availableVMs
+                      .filter(vm => vm.toLowerCase().includes(vmName.toLowerCase()))
+                      .map(vm => (
                         <li
-                          key={pod}
+                          key={vm}
                           className="cursor-pointer select-none relative py-2 pl-3 pr-9 hover:bg-indigo-600 hover:text-white text-gray-900"
                           style={{ fontSize: '14px' }}
                           onClick={() => {
-                            setPodName(pod);
-                            setShowPodNameSuggestions(false);
+                            setVmName(vm);
+                            setShowVMSuggestions(false);
                           }}
                         >
-                          <span className="block truncate">{pod}</span>
+                          <span className="block truncate">{vm}</span>
                         </li>
                       ))}
                   </ul>
@@ -202,14 +252,98 @@ export const LiveMigrationCheck: React.FC<Props> = ({ workspaceName, versions })
 
           <button
             type="submit"
-            disabled={loading || !selectedVersion || !namespace || !podName}
+            disabled={loading || !selectedVersion || !namespace || !vmName}
             className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {loading ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <AlertCircle className="h-4 w-4 mr-2" />}
-            {loading ? 'Checking...' : 'Check Migration'}
+            {loading ? 'Searching...' : 'Search VirtualMachine'}
           </button>
         </form>
       </div>
+
+      {(vmPods.length > 0 || vmMigrations.length > 0) && (
+        <div className="bg-white shadow rounded-lg p-6">
+          <h3 className="text-lg font-medium text-gray-900 mb-4">Timeline for VM: {vmName}</h3>
+          <div className="space-y-2">
+            {getMergedTimeline().map((item, idx) => {
+              if (item.type === 'pod') {
+                const pod = item.data;
+                // Find migrations that have this pod as source or target
+                const relatedMigrations = vmMigrations.filter(
+                  m => m.sourcePod === pod.name || m.targetPod === pod.name
+                );
+                
+                return (
+                  <div key={`pod-${pod.name}-${idx}`}>
+                    <button
+                      onClick={() => handlePodCheck(pod.name)}
+                      className={`w-full text-left px-4 py-3 rounded-lg border transition-colors ${
+                        selectedPod === pod.name
+                          ? 'border-indigo-500 bg-indigo-50'
+                          : 'border-gray-200 hover:border-indigo-300 hover:bg-gray-50'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between">
+                        <div className="flex flex-col">
+                          <span className="font-mono text-sm">{pod.name}</span>
+                          <span className="text-xs text-gray-500 mt-1">
+                            Created: {new Date(pod.creationTime).toISOString()}
+                          </span>
+                          {relatedMigrations.length > 0 && (
+                            <div className="text-xs text-blue-600 mt-1">
+                              {relatedMigrations.map(m => {
+                                if (m.sourcePod === pod.name) return `→ Migrated to ${m.targetPod}`;
+                                if (m.targetPod === pod.name) return `← Migrated from ${m.sourcePod}`;
+                                return null;
+                              }).filter(Boolean).join(' • ')}
+                            </div>
+                          )}
+                        </div>
+                        {selectedPod === pod.name && (
+                          <CheckCircle2 className="h-5 w-5 text-indigo-600" />
+                        )}
+                      </div>
+                    </button>
+                  </div>
+                );
+              } else {
+                const migration = item.data;
+                return (
+                  <div key={`migration-${migration.name}-${idx}`} className="ml-4">
+                    <button
+                      onClick={() => setSelectedMigrationYaml(migration.yaml)}
+                      className={`w-full text-left px-4 py-3 rounded-lg border-2 border-dashed transition-colors ${
+                        selectedMigrationYaml === migration.yaml
+                          ? 'border-purple-500 bg-purple-50'
+                          : 'border-purple-200 hover:border-purple-400 hover:bg-purple-50'
+                      }`}
+                    >
+                      <div className="flex flex-col">
+                        <span className="font-mono text-sm text-purple-700">🔄 {migration.name}</span>
+                        <span className="text-xs text-gray-500 mt-1">
+                          Created: {new Date(migration.creationTime).toISOString()}
+                        </span>
+                        <span className="text-xs text-purple-600 mt-1">
+                          {migration.sourcePod} → {migration.targetPod}
+                        </span>
+                      </div>
+                    </button>
+                  </div>
+                );
+              }
+            })}
+          </div>
+        </div>
+      )}
+
+      {selectedMigrationYaml && (
+        <div className="bg-white shadow rounded-lg p-6">
+          <h3 className="text-lg font-medium text-gray-900 mb-4">Migration YAML</h3>
+          <pre className="bg-gray-50 p-4 rounded-lg overflow-x-auto text-xs font-mono">
+            {selectedMigrationYaml}
+          </pre>
+        </div>
+      )}
 
       {result && (
         <div className="bg-white shadow rounded-lg p-6">

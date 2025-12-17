@@ -133,6 +133,26 @@ export interface NodeToNodeCompatibility {
   missingLabels: Array<{ key: string; value: string }>;
 }
 
+export interface PodInfo {
+  name: string;
+  creationTime: string;
+}
+
+export interface MigrationInfo {
+  name: string;
+  creationTime: string;
+  sourcePod: string;
+  targetPod: string;
+  yaml: string;
+}
+
+export interface VirtualMachinePodsResult {
+  vmName: string;
+  pods: PodInfo[];
+  migrations: MigrationInfo[];
+  error?: string;
+}
+
 export interface LiveMigrationCheckResult {
   podName: string;
   nodeSelector?: Record<string, string>;
@@ -140,6 +160,15 @@ export interface LiveMigrationCheckResult {
   nodeToNodeCompatibilities?: NodeToNodeCompatibility[];
   error?: string;
 }
+
+export const getVirtualMachinePods = async (workspaceName: string, versionID: string, namespace: string, vmName: string) => {
+  const response = await client.post<VirtualMachinePodsResult>(`/workspaces/${workspaceName}/vm-pods`, {
+    versionID,
+    namespace,
+    vmName
+  });
+  return response.data;
+};
 
 export const checkLiveMigration = async (workspaceName: string, versionID: string, namespace: string, podName: string) => {
   const response = await client.post<LiveMigrationCheckResult>(`/workspaces/${workspaceName}/live-migration-check`, { 

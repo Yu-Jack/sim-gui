@@ -1,0 +1,39 @@
+#!/bin/bash
+set -e
+
+cd "$(dirname "$0")/.."
+
+# Detect OS
+OS=$(uname -s | tr '[:upper:]' '[:lower:]')
+ARCH=$(uname -m)
+
+# Map architecture names
+case "$ARCH" in
+    x86_64)
+        ARCH="amd64"
+        ;;
+    aarch64)
+        ARCH="arm64"
+        ;;
+    arm64)
+        ARCH="arm64"
+        ;;
+esac
+
+# Construct binary name
+BINARY="./bin/sim-cli-${OS}-${ARCH}"
+
+# Check if binary exists
+if [ ! -f "$BINARY" ]; then
+    echo "Error: Binary $BINARY not found"
+    echo "Available binaries:"
+    ls -1 ./bin/sim-cli-* 2>/dev/null || echo "  No binaries found"
+    exit 1
+fi
+
+# Make sure it's executable
+chmod +x "$BINARY"
+
+# Run the server
+echo "Starting server with $BINARY"
+"$BINARY" server "$@"

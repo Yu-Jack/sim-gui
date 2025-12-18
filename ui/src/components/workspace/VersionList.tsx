@@ -19,7 +19,7 @@ export const VersionList: React.FC<VersionListProps> = ({
   const [loading, setLoading] = useState<Record<string, string | null>>({}); // versionID -> action ('start', 'stop', 'delete')
   const [openCopyMenu, setOpenCopyMenu] = useState<string | null>(null); // versionID of open menu
   const copyMenuRefs = useRef<Record<string, HTMLDivElement | null>>({});
-  const { showSuccess, showError, showInfo } = useToast();
+  const { showSuccess, showError } = useToast();
   const [confirmDialog, setConfirmDialog] = useState<{
     isOpen: boolean;
     title: string;
@@ -210,7 +210,7 @@ export const VersionList: React.FC<VersionListProps> = ({
                       Start Simulator
                     </button>
                   )}
-                  <div className="relative" ref={(el) => (copyMenuRefs.current[version.id] = el)}>
+                  <div className="relative" ref={(el) => { copyMenuRefs.current[version.id] = el; }}>
                     <button
                       onClick={() => setOpenCopyMenu(openCopyMenu === version.id ? null : version.id)}
                       disabled={!isRunning || !!isLoading}

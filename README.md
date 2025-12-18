@@ -37,7 +37,7 @@ make build
 After building, run the binary with embedded UI:
 
 ```bash
-./bin/sim-gui-linux-amd64 server
+./scripts/start
 ```
 
 Options:

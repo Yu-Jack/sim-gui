@@ -108,6 +108,7 @@ func (w *ImageBuildWorker) buildImage(instanceName string, bundlePath string, ba
 		Labels: map[string]string{
 			bundleNameKey: instanceName,
 		},
+		Remove: true, // Remove intermediate containers after build
 	})
 
 	if err != nil {

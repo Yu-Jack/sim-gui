@@ -42,7 +42,10 @@ func (c *Client) RemoveImages(instanceName string) error {
 	}
 
 	for _, v := range images {
-		resp, err := c.APIClient.ImageRemove(c.ctx, v.ID, image.RemoveOptions{})
+		resp, err := c.APIClient.ImageRemove(c.ctx, v.ID, image.RemoveOptions{
+			Force:         true,
+			PruneChildren: true,
+		})
 		if err != nil {
 			return fmt.Errorf("error removing image %s: %v", v.ID, err)
 		}

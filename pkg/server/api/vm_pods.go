@@ -87,14 +87,11 @@ func (s *Server) handleGetVMPods(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	instanceName := fmt.Sprintf("%s-%s", name, req.VersionID)
-
-	// Check if container is running
-	containers, err := s.docker.FindRunningContainer(instanceName)
-	if err != nil || len(containers) == 0 {
+	exec, err := s.GetExecutor(name, req.VersionID)
+	if err != nil {
 		result := VirtualMachinePodsResult{
 			VMName: req.VMName,
-			Error:  fmt.Sprintf("Simulator for version %s is not running", req.VersionID),
+			Error:  fmt.Sprintf("Failed to get executor: %v", err),
 		}
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(result)
@@ -102,7 +99,7 @@ func (s *Server) handleGetVMPods(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Check if VM exists
-	_, stderr, err := utils.ExecKubectl(s.docker, instanceName, "get", "virtualmachine", req.VMName, "-n", req.Namespace, "-o", "yaml")
+	_, stderr, err := utils.ExecKubectl(exec, "get", "virtualmachine", req.VMName, "-n", req.Namespace, "-o", "yaml")
 	if err != nil || stderr != "" {
 		result := VirtualMachinePodsResult{
 			VMName: req.VMName,
@@ -116,7 +113,7 @@ func (s *Server) handleGetVMPods(w http.ResponseWriter, r *http.Request) {
 	// Get all pods in namespace with label selector for this VM (including terminated pods)
 	// KubeVirt uses labels like kubevirt.io/vm=<vm-name>
 	// kubectl get pods returns all pods by default, including Completed/Terminated ones
-	podsYAML, stderr, err := utils.ExecKubectl(s.docker, instanceName, "get", "pods", "-n", req.Namespace, "-l", fmt.Sprintf("harvesterhci.io/vmName=%s", req.VMName), "-o", "yaml")
+	podsYAML, stderr, err := utils.ExecKubectl(exec, "get", "pods", "-n", req.Namespace, "-l", fmt.Sprintf("harvesterhci.io/vmName=%s", req.VMName), "-o", "yaml")
 	if err != nil {
 		result := VirtualMachinePodsResult{
 			VMName: req.VMName,
@@ -161,7 +158,7 @@ func (s *Server) handleGetVMPods(w http.ResponseWriter, r *http.Request) {
 
 	// If no pods found with label selector, try matching by prefix (including terminated pods)
 	if len(pods) == 0 {
-		allPodsYAML, _, err := utils.ExecKubectl(s.docker, instanceName, "get", "pods", "-n", req.Namespace, "-o", "yaml")
+		allPodsYAML, _, err := utils.ExecKubectl(exec, "get", "pods", "-n", req.Namespace, "-o", "yaml")
 		if err == nil {
 			var allPodList PodList
 			if err := yaml.Unmarshal([]byte(allPodsYAML), &allPodList); err == nil {
@@ -188,7 +185,7 @@ func (s *Server) handleGetVMPods(w http.ResponseWriter, r *http.Request) {
 	})
 
 	// Get VirtualMachineInstanceMigrations for this VM
-	migrationsYAML, _, err := utils.ExecKubectl(s.docker, instanceName, "get", "virtualmachineinstancemigrations", "-n", req.Namespace, "-l", fmt.Sprintf("kubevirt.io/vmi-name=%s", req.VMName), "-o", "yaml")
+	migrationsYAML, _, err := utils.ExecKubectl(exec, "get", "virtualmachineinstancemigrations", "-n", req.Namespace, "-l", fmt.Sprintf("kubevirt.io/vmi-name=%s", req.VMName), "-o", "yaml")
 	migrations := make([]MigrationInfo, 0)
 
 	if err == nil && migrationsYAML != "" {
@@ -197,7 +194,7 @@ func (s *Server) handleGetVMPods(w http.ResponseWriter, r *http.Request) {
 			for _, mig := range migrationList.Items {
 				if mig.Metadata.Name != "" {
 					// Get full YAML for this migration
-					migYAML, _, err := utils.ExecKubectl(s.docker, instanceName, "get", "virtualmachineinstancemigration", mig.Metadata.Name, "-n", req.Namespace, "-o", "yaml")
+					migYAML, _, err := utils.ExecKubectl(exec, "get", "virtualmachineinstancemigration", mig.Metadata.Name, "-n", req.Namespace, "-o", "yaml")
 					if err == nil {
 						migrations = append(migrations, MigrationInfo{
 							Name:         mig.Metadata.Name,

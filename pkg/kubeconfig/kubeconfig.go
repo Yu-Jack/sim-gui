@@ -99,6 +99,50 @@ func mergeKubeConfig(existing, new *api.Config) *api.Config {
 	return existing
 }
 
+// ConfigureRuntimeKubeConfig configures a runtime kubeconfig by renaming the current context
+func ConfigureRuntimeKubeConfig(contents []byte, name string) (*api.Config, error) {
+	config, err := clientcmd.Load(contents)
+	if err != nil {
+		return nil, fmt.Errorf("failed to load kubeconfig: %w", err)
+	}
+
+	currentCtxName := config.CurrentContext
+	if currentCtxName == "" {
+		for k := range config.Contexts {
+			currentCtxName = k
+			break
+		}
+	}
+	if currentCtxName == "" {
+		return nil, fmt.Errorf("no context found in kubeconfig")
+	}
+
+	ctx := config.Contexts[currentCtxName]
+	clusterName := ctx.Cluster
+	userName := ctx.AuthInfo
+
+	finalConfig := api.NewConfig()
+	finalConfig.CurrentContext = name
+
+	// Copy and rename context
+	newCtx := ctx.DeepCopy()
+	newCtx.Cluster = name
+	newCtx.AuthInfo = fmt.Sprintf("admin@%s", name)
+	finalConfig.Contexts[name] = newCtx
+
+	// Copy and rename cluster
+	if cluster, ok := config.Clusters[clusterName]; ok {
+		finalConfig.Clusters[name] = cluster.DeepCopy()
+	}
+
+	// Copy and rename user
+	if user, ok := config.AuthInfos[userName]; ok {
+		finalConfig.AuthInfos[newCtx.AuthInfo] = user.DeepCopy()
+	}
+
+	return finalConfig, nil
+}
+
 // MergeAllConfigs merges multiple kubeconfigs into a single config
 // Each config should already be configured with ConfigureKubeConfig
 func MergeAllConfigs(configs []*api.Config) *api.Config {

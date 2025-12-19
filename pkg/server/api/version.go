@@ -3,16 +3,12 @@ package api
 import (
 	"encoding/json"
 	"fmt"
-	"io"
 	"net/http"
 	"os"
 	"path/filepath"
-	"sort"
-	"time"
 
 	"github.com/Yu-Jack/sim-gui/pkg/kubeconfig"
 	"github.com/Yu-Jack/sim-gui/pkg/server/model"
-	"github.com/Yu-Jack/sim-gui/pkg/server/utils"
 	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/client-go/tools/clientcmd/api"
 )
@@ -37,15 +33,7 @@ func (s *Server) handleUploadVersion(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Create version ID - find max version number and increment
-	maxVersion := 0
-	for _, v := range ws.Versions {
-		var vNum int
-		if _, err := fmt.Sscanf(v.ID, "v%d", &vNum); err == nil && vNum > maxVersion {
-			maxVersion = vNum
-		}
-	}
-	versionID := fmt.Sprintf("v%d", maxVersion+1)
+	versionID := getNextVersionID(ws)
 	versionPath := filepath.Join(s.dataDir, "workspaces", name, versionID)
 
 	if err := os.MkdirAll(versionPath, 0755); err != nil {
@@ -53,86 +41,20 @@ func (s *Server) handleUploadVersion(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var bundlePath string
-	var bundleName string
+	var version *model.Version
 
-	if len(files) == 1 {
-		fileHeader := files[0]
-		file, err := fileHeader.Open()
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
-		defer file.Close()
-
-		bundleName = filepath.Base(fileHeader.Filename)
-		bundlePath = filepath.Join(versionPath, bundleName)
-		destFile, err := os.Create(bundlePath)
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
-		defer destFile.Close()
-
-		if _, err := io.Copy(destFile, file); err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
+	if isKubeconfigFile(files) {
+		version, err = processKubeconfigUpload(files, versionPath, versionID)
 	} else {
-		// Sort files by filename to ensure correct order
-		sort.Slice(files, func(i, j int) bool {
-			return files[i].Filename < files[j].Filename
-		})
-
-		// Use a generic name for combined bundle
-		bundleName = "bundle.zip"
-		bundlePath = filepath.Join(versionPath, bundleName)
-
-		destFile, err := os.Create(bundlePath)
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
-		defer destFile.Close()
-
-		for _, fileHeader := range files {
-			f, err := fileHeader.Open()
-			if err != nil {
-				http.Error(w, err.Error(), http.StatusInternalServerError)
-				return
-			}
-			// Copy content
-			if _, err := io.Copy(destFile, f); err != nil {
-				f.Close()
-				http.Error(w, err.Error(), http.StatusInternalServerError)
-				return
-			}
-			f.Close()
-		}
+		version, err = processSupportBundleUpload(files, versionPath, versionID)
 	}
 
-	// Extract
-	extractPath := filepath.Join(versionPath, "extracted")
-	if err := os.MkdirAll(extractPath, 0755); err != nil {
+	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
-	if err := utils.Unzip(bundlePath, extractPath); err != nil {
-		http.Error(w, fmt.Sprintf("Failed to extract: %v", err), http.StatusInternalServerError)
-		return
-	}
-
-	// Create Version
-	version := model.Version{
-		ID:                versionID,
-		Name:              versionID, // Default name
-		CreatedAt:         time.Now(),
-		SupportBundleName: bundleName,
-		BundlePath:        bundlePath,
-	}
-
-	ws.Versions = append(ws.Versions, version)
+	ws.Versions = append(ws.Versions, *version)
 	if err := s.store.UpdateWorkspace(*ws); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -161,6 +83,11 @@ func (s *Server) handleStartSimulator(w http.ResponseWriter, r *http.Request) {
 
 	if version == nil {
 		http.Error(w, "Version not found", http.StatusNotFound)
+		return
+	}
+
+	if version.Type == model.VersionTypeRuntime {
+		w.WriteHeader(http.StatusOK)
 		return
 	}
 
@@ -219,6 +146,17 @@ func (s *Server) handleStartSimulator(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleStopSimulator(w http.ResponseWriter, r *http.Request) {
 	name := r.PathValue("name")
 	versionID := r.PathValue("versionID")
+
+	ws, err := s.store.GetWorkspace(name)
+	if err == nil {
+		for _, v := range ws.Versions {
+			if v.ID == versionID && v.Type == model.VersionTypeRuntime {
+				w.WriteHeader(http.StatusOK)
+				return
+			}
+		}
+	}
+
 	instanceName := fmt.Sprintf("%s-%s", name, versionID)
 
 	if err := s.docker.StopContainer(instanceName); err != nil {
@@ -232,6 +170,17 @@ func (s *Server) handleStopSimulator(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleCleanVersionImage(w http.ResponseWriter, r *http.Request) {
 	name := r.PathValue("name")
 	versionID := r.PathValue("versionID")
+
+	ws, err := s.store.GetWorkspace(name)
+	if err == nil {
+		for _, v := range ws.Versions {
+			if v.ID == versionID && v.Type == model.VersionTypeRuntime {
+				w.WriteHeader(http.StatusOK)
+				return
+			}
+		}
+	}
+
 	instanceName := fmt.Sprintf("%s-%s", name, versionID)
 
 	// Check if container is running
@@ -264,15 +213,37 @@ func (s *Server) handleCleanVersionImage(w http.ResponseWriter, r *http.Request)
 func (s *Server) handleGetSimulatorStatus(w http.ResponseWriter, r *http.Request) {
 	name := r.PathValue("name")
 	versionID := r.PathValue("versionID")
-	instanceName := fmt.Sprintf("%s-%s", name, versionID)
 
-	containers, err := s.docker.FindRunningContainer(instanceName)
+	ws, err := s.store.GetWorkspace(name)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
-	ws, err := s.store.GetWorkspace(name)
+	var targetVersion *model.Version
+	for _, v := range ws.Versions {
+		if v.ID == versionID {
+			targetVersion = &v
+			break
+		}
+	}
+
+	if targetVersion != nil && targetVersion.Type == model.VersionTypeRuntime {
+		status := struct {
+			Running bool `json:"running"`
+			Ready   bool `json:"ready"`
+		}{
+			Running: true,
+			Ready:   true,
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(status)
+		return
+	}
+
+	instanceName := fmt.Sprintf("%s-%s", name, versionID)
+
+	containers, err := s.docker.FindRunningContainer(instanceName)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -301,6 +272,38 @@ func (s *Server) handleGetSimulatorStatus(w http.ResponseWriter, r *http.Request
 func (s *Server) handleGetKubeconfig(w http.ResponseWriter, r *http.Request) {
 	name := r.PathValue("name")
 	versionID := r.PathValue("versionID")
+
+	ws, err := s.store.GetWorkspace(name)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusNotFound)
+		return
+	}
+
+	var targetVersion *model.Version
+	for _, v := range ws.Versions {
+		if v.ID == versionID {
+			targetVersion = &v
+			break
+		}
+	}
+
+	if targetVersion == nil {
+		http.Error(w, "Version not found", http.StatusNotFound)
+		return
+	}
+
+	if targetVersion.Type == model.VersionTypeRuntime {
+		content, err := os.ReadFile(targetVersion.KubeconfigPath)
+		if err != nil {
+			http.Error(w, fmt.Sprintf("Failed to read kubeconfig: %v", err), http.StatusInternalServerError)
+			return
+		}
+		w.Header().Set("Content-Type", "application/x-yaml")
+		w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=\"%s-%s.kubeconfig\"", name, versionID))
+		w.Write(content)
+		return
+	}
+
 	instanceName := fmt.Sprintf("%s-%s", name, versionID)
 
 	// Check if running
@@ -383,17 +386,19 @@ func (s *Server) handleDeleteVersion(w http.ResponseWriter, r *http.Request) {
 		fmt.Printf("Failed to cleanup code-server directory: %v\n", err)
 	}
 
-	// Remove container and image if exists
-	instanceName := fmt.Sprintf("%s-%s", name, versionID)
+	if ws.Versions[versionIndex].Type != model.VersionTypeRuntime {
+		// Remove container and image if exists
+		instanceName := fmt.Sprintf("%s-%s", name, versionID)
 
-	// Remove container first
-	if err := s.docker.RemoveContainer(instanceName); err != nil {
-		// Log error but continue to cleanup images and files
-		fmt.Printf("Failed to remove container %s: %v\n", instanceName, err)
+		// Remove container first
+		if err := s.docker.RemoveContainer(instanceName); err != nil {
+			// Log error but continue to cleanup images and files
+			fmt.Printf("Failed to remove container %s: %v\n", instanceName, err)
+		}
+
+		// Remove images
+		_ = s.docker.RemoveImages(instanceName)
 	}
-
-	// Remove images
-	_ = s.docker.RemoveImages(instanceName)
 
 	// Update workspace
 	ws.Versions = append(ws.Versions[:versionIndex], ws.Versions[versionIndex+1:]...)
@@ -441,6 +446,19 @@ func (s *Server) handleExportWorkspaceKubeconfig(w http.ResponseWriter, r *http.
 	// Collect kubeconfigs from all running versions
 	for _, version := range ws.Versions {
 		instanceName := fmt.Sprintf("%s-%s", name, version.ID)
+
+		if version.Type == model.VersionTypeRuntime {
+			content, err := os.ReadFile(version.KubeconfigPath)
+			if err != nil {
+				continue
+			}
+			config, err := kubeconfig.ConfigureRuntimeKubeConfig(content, instanceName)
+			if err != nil {
+				continue
+			}
+			kubeconfigs = append(kubeconfigs, config)
+			continue
+		}
 
 		// Check if running
 		containers, err := s.docker.FindRunningContainer(instanceName)

@@ -44,6 +44,16 @@ export const UploadArea: React.FC<UploadAreaProps> = ({ workspaceName, onUploadC
       <p className="mt-2 text-sm text-gray-600">
         {isUploading ? 'Uploading...' : 'Drag & drop support bundle here, or click to select files'}
       </p>
+      {!isUploading && (
+        <div className="mt-4 text-xs text-gray-500 text-left inline-block">
+          <p className="font-semibold mb-1">Supported formats:</p>
+          <ul className="list-disc pl-4 space-y-1">
+            <li>Single support bundle (.zip)</li>
+            <li>Multiple split support bundle parts (.zip)</li>
+            <li>Single kubeconfig file (.kubeconfig, .yaml, .yml)</li>
+          </ul>
+        </div>
+      )}
     </div>
   );
 };

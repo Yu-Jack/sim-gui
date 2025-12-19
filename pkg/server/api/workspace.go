@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Yu-Jack/sim-gui/pkg/executor"
 	"github.com/Yu-Jack/sim-gui/pkg/server/model"
 	"github.com/Yu-Jack/sim-gui/pkg/server/utils"
 )
@@ -195,15 +196,25 @@ func (s *Server) handleGetResourceHistory(w http.ResponseWriter, r *http.Request
 	var results []VersionResult
 
 	for _, v := range ws.Versions {
-		instanceName := fmt.Sprintf("%s-%s", name, v.ID)
+		if v.Type != model.VersionTypeRuntime {
+			instanceName := fmt.Sprintf("%s-%s", name, v.ID)
+			containers, err := s.docker.FindRunningContainer(instanceName)
+			if err != nil || len(containers) == 0 {
+				results = append(results, VersionResult{
+					VersionID: v.ID,
+					Status:    "stopped",
+					Error:     "Container not running",
+				})
+				continue
+			}
+		}
 
-		// Check if container is running
-		containers, err := s.docker.FindRunningContainer(instanceName)
-		if err != nil || len(containers) == 0 {
+		exec, err := s.GetExecutor(name, v.ID)
+		if err != nil {
 			results = append(results, VersionResult{
 				VersionID: v.ID,
-				Status:    "stopped",
-				Error:     "Container not running",
+				Status:    "error",
+				Error:     err.Error(),
 			})
 			continue
 		}
@@ -221,7 +232,7 @@ func (s *Server) handleGetResourceHistory(w http.ResponseWriter, r *http.Request
 			args = []string{"get", req.Resource, "-o", "yaml"}
 		}
 
-		stdout, stderr, err := utils.ExecKubectl(s.docker, instanceName, args...)
+		stdout, stderr, err := utils.ExecKubectl(exec, args...)
 
 		if err != nil {
 			results = append(results, VersionResult{
@@ -261,19 +272,24 @@ func (s *Server) handleGetNamespaces(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var instanceName string
+	var exec executor.Executor
 	if versionID != "" {
-		instanceName = fmt.Sprintf("%s-%s", name, versionID)
+		var err error
+		exec, err = s.GetExecutor(name, versionID)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusNotFound)
+			return
+		}
 	} else {
 		var err error
-		instanceName, err = utils.FindLatestRunningInstance(name, ws, s.docker)
+		exec, err = utils.FindLatestAvailableExecutor(name, ws, s.docker)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusNotFound)
 			return
 		}
 	}
 
-	stdout, _, err := utils.ExecKubectl(s.docker, instanceName, "get", "namespaces", "-o", "jsonpath={.items[*].metadata.name}")
+	stdout, _, err := utils.ExecKubectl(exec, "get", "namespaces", "-o", "jsonpath={.items[*].metadata.name}")
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -292,13 +308,13 @@ func (s *Server) handleGetResourceTypes(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	instanceName, err := utils.FindLatestRunningInstance(name, ws, s.docker)
+	exec, err := utils.FindLatestAvailableExecutor(name, ws, s.docker)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusNotFound)
 		return
 	}
 
-	stdout, _, err := utils.ExecKubectl(s.docker, instanceName, "api-resources", "--verbs=list", "-o", "name")
+	stdout, _, err := utils.ExecKubectl(exec, "api-resources", "--verbs=list", "-o", "name")
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -333,13 +349,21 @@ func (s *Server) handleGetResources(w http.ResponseWriter, r *http.Request) {
 		if versionID != "" && v.ID != versionID {
 			continue
 		}
-		instanceName := fmt.Sprintf("%s-%s", name, v.ID)
-		containers, err := s.docker.FindRunningContainer(instanceName)
-		if err != nil || len(containers) == 0 {
+
+		if v.Type != model.VersionTypeRuntime {
+			instanceName := fmt.Sprintf("%s-%s", name, v.ID)
+			containers, err := s.docker.FindRunningContainer(instanceName)
+			if err != nil || len(containers) == 0 {
+				continue
+			}
+		}
+
+		exec, err := s.GetExecutor(name, v.ID)
+		if err != nil {
 			continue
 		}
 
-		stdout, _, err := utils.ExecKubectl(s.docker, instanceName, "get", resourceType, "-n", namespace, "-o", "jsonpath={.items[*].metadata.name}")
+		stdout, _, err := utils.ExecKubectl(exec, "get", resourceType, "-n", namespace, "-o", "jsonpath={.items[*].metadata.name}")
 		if err != nil {
 			continue
 		}

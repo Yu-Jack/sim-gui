@@ -3,6 +3,7 @@ package api
 import (
 	"fmt"
 
+	"github.com/Yu-Jack/sim-gui/pkg/executor"
 	"github.com/Yu-Jack/sim-gui/pkg/server/model"
 )
 
@@ -81,4 +82,31 @@ func HasVersionInWorkspace(ws *model.Workspace, versionID string) bool {
 		}
 	}
 	return false
+}
+
+func (s *Server) GetExecutor(workspaceName, versionID string) (executor.Executor, error) {
+	ws, err := s.store.GetWorkspace(workspaceName)
+	if err != nil {
+		return nil, err
+	}
+
+	var targetVersion *model.Version
+	for _, v := range ws.Versions {
+		if v.ID == versionID {
+			targetVersion = &v
+			break
+		}
+	}
+
+	if targetVersion == nil {
+		return nil, fmt.Errorf("version %s not found in workspace %s", versionID, workspaceName)
+	}
+
+	if targetVersion.Type == model.VersionTypeRuntime {
+		return executor.NewRuntimeExecutor(targetVersion.KubeconfigPath), nil
+	}
+
+	// Default to support bundle
+	instanceName := fmt.Sprintf("%s-%s", workspaceName, versionID)
+	return executor.NewContainerExecutor(s.docker, instanceName), nil
 }

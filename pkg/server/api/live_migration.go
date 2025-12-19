@@ -84,13 +84,10 @@ func (s *Server) handleCheckLiveMigration(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	instanceName := fmt.Sprintf("%s-%s", name, req.VersionID)
-
-	// Check if container is running
-	containers, err := s.docker.FindRunningContainer(instanceName)
-	if err != nil || len(containers) == 0 {
+	exec, err := s.GetExecutor(name, req.VersionID)
+	if err != nil {
 		result := LiveMigrationCheckResult{
-			Error: fmt.Sprintf("Simulator for version %s is not running", req.VersionID),
+			Error: fmt.Sprintf("Failed to get executor: %v", err),
 		}
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(result)
@@ -98,7 +95,7 @@ func (s *Server) handleCheckLiveMigration(w http.ResponseWriter, r *http.Request
 	}
 
 	// Get pod spec
-	podYAML, stderr, err := utils.ExecKubectl(s.docker, instanceName, "get", "pod", req.PodName, "-n", req.Namespace, "-o", "yaml")
+	podYAML, stderr, err := utils.ExecKubectl(exec, "get", "pod", req.PodName, "-n", req.Namespace, "-o", "yaml")
 	if err != nil {
 		result := LiveMigrationCheckResult{
 			Error: fmt.Sprintf("Failed to get pod: %v", err),
@@ -128,7 +125,7 @@ func (s *Server) handleCheckLiveMigration(w http.ResponseWriter, r *http.Request
 	}
 
 	// Get all nodes
-	nodesYAML, stderr, err := utils.ExecKubectl(s.docker, instanceName, "get", "nodes", "-o", "yaml")
+	nodesYAML, stderr, err := utils.ExecKubectl(exec, "get", "nodes", "-o", "yaml")
 	if err != nil {
 		result := LiveMigrationCheckResult{
 			Error: fmt.Sprintf("Failed to get nodes: %v", err),

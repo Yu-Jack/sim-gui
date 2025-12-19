@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/Yu-Jack/sim-gui/pkg/docker"
+	"github.com/Yu-Jack/sim-gui/pkg/executor"
 	"github.com/Yu-Jack/sim-gui/pkg/server/model"
 )
 
@@ -59,20 +60,24 @@ func Unzip(src, dest string) error {
 	return nil
 }
 
-func FindLatestRunningInstance(name string, ws *model.Workspace, dockerCli *docker.Client) (string, error) {
+func FindLatestAvailableExecutor(name string, ws *model.Workspace, dockerCli *docker.Client) (executor.Executor, error) {
 	for i := len(ws.Versions) - 1; i >= 0; i-- {
 		v := ws.Versions[i]
+		if v.Type == model.VersionTypeRuntime {
+			return executor.NewRuntimeExecutor(v.KubeconfigPath), nil
+		}
+
 		iname := fmt.Sprintf("%s-%s", name, v.ID)
 		containers, err := dockerCli.FindRunningContainer(iname)
 		if err == nil && len(containers) > 0 {
-			return iname, nil
+			return executor.NewContainerExecutor(dockerCli, iname), nil
 		}
 	}
-	return "", fmt.Errorf("no running simulator found")
+	return nil, fmt.Errorf("no running simulator or runtime cluster found")
 }
 
-func ExecKubectl(dockerCli *docker.Client, instanceName string, args ...string) (string, string, error) {
+func ExecKubectl(exec executor.Executor, args ...string) (string, string, error) {
 	cmd := append([]string{"kubectl"}, args...)
 	env := []string{"KUBECONFIG=/root/.sim/admin.kubeconfig"}
-	return dockerCli.ExecContainer(instanceName, cmd, env)
+	return exec.Exec(cmd, env)
 }
